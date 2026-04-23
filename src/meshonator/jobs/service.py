@@ -48,17 +48,18 @@ class JobsService:
     def list_results(self, limit: int = 500) -> list[JobResultModel]:
         return list(self.db.scalars(select(JobResultModel).order_by(JobResultModel.created_at.desc()).limit(limit)).all())
 
-    def recover_stale_running_jobs(self, stale_after_minutes: int = 15) -> int:
+    def recover_stale_running_jobs(self, stale_after_minutes: int | None = 15) -> int:
         now = datetime.now(timezone.utc)
-        cutoff = now.timestamp() - (stale_after_minutes * 60)
+        cutoff = None if stale_after_minutes is None else now.timestamp() - (stale_after_minutes * 60)
         recovered = 0
         rows = list(self.db.scalars(select(JobModel).where(JobModel.status.in_(["pending", "running"]))).all())
         for job in rows:
-            anchor = job.started_at or job.created_at
-            if anchor is None:
-                continue
-            if anchor.timestamp() >= cutoff:
-                continue
+            if cutoff is not None:
+                anchor = job.started_at or job.created_at
+                if anchor is None:
+                    continue
+                if anchor.timestamp() >= cutoff:
+                    continue
             job.status = "failed"
             job.finished_at = now
             self.db.add(
@@ -67,7 +68,10 @@ class JobsService:
                     status="failed",
                     node_id=None,
                     message="Recovered stale job during startup",
-                    details={"reason": "stale_recovery", "stale_after_minutes": stale_after_minutes},
+                    details={
+                        "reason": "stale_recovery" if stale_after_minutes is not None else "startup_orphan_recovery",
+                        "stale_after_minutes": stale_after_minutes,
+                    },
                 )
             )
             recovered += 1

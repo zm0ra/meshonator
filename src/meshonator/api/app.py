@@ -100,7 +100,7 @@ def startup() -> None:
             password=settings.bootstrap_admin_password,
             role=settings.bootstrap_admin_role,
         )
-        JobsService(db).recover_stale_running_jobs(stale_after_minutes=15)
+        JobsService(db).recover_stale_running_jobs(stale_after_minutes=None)
 
 
 @app.get("/health")

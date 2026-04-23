@@ -25,6 +25,7 @@ from meshonator.groups.service import GroupsService
 from meshonator.inventory.service import InventoryService
 from meshonator.jobs.service import JobsService
 from meshonator.map.service import MapService
+from meshonator.jobs.queue import enqueue_discovery_job, enqueue_sync_job
 from meshonator.operations.service import OperationsService
 from meshonator.providers.registry import ProviderRegistry
 from meshonator.sync.service import SyncService
@@ -44,6 +45,11 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="src/meshonator/static"), name="static")
 templates = Jinja2Templates(directory="src/meshonator/templates")
+templates.env.globals.update(
+    app_name=settings.app_name,
+    build_version=settings.build_version,
+    build_date=settings.build_date,
+)
 
 
 def _parse_multi_value(raw: str) -> list[str]:
@@ -152,27 +158,21 @@ def ui_discovery_scan(
     cidrs = _parse_multi_value(cidrs_text)
     endpoints = _parse_multi_value(endpoints_text)
     try:
-        found = DiscoveryService(db, registry).scan(
-            provider_name=provider,
-            hosts=hosts,
-            cidrs=cidrs,
-            manual_endpoints=endpoints,
-            port=port,
+        job = JobsService(db).create(
+            job_type="discovery_scan",
+            requested_by=user.username,
             source="ui",
-        )
-        AuditService(db).log(
-            actor=user.username,
-            source="ui",
-            action="discovery.scan",
-            provider=provider,
-            metadata={
+            payload={
+                "provider": provider,
                 "hosts": hosts,
                 "cidrs": cidrs,
                 "manual_endpoints": endpoints,
                 "port": port,
+                "source": "ui",
             },
         )
-        message = quote_plus(f"Discovery complete: {len(found)} reachable endpoints.")
+        enqueue_discovery_job(job.id, registry)
+        message = quote_plus(f"Discovery queued. Job ID: {job.id}")
         return RedirectResponse(url=f"/?message={message}", status_code=303)
     except Exception as exc:
         error = quote_plus(f"Discovery failed: {exc}")
@@ -190,17 +190,14 @@ def ui_sync_run(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
 ) -> RedirectResponse:
-    jobs = JobsService(db)
-    job = jobs.create(job_type="sync_all", requested_by=user.username, source="ui", payload={"quick": quick})
-    jobs.start(job.id)
-    results = SyncService(db, registry).sync_all(quick=quick)
-    success = all(result.get("status") == "success" for result in results)
-    jobs.finish(job.id, success=success)
-    AuditService(db).log(actor=user.username, source="ui", action="sync.all", metadata={"results": results})
-    failures = sum(1 for result in results if result.get("status") != "success")
-    message = quote_plus(
-        f"Sync finished. Endpoints: {len(results)}, failed: {failures}, mode: {'quick' if quick else 'full'}."
+    job = JobsService(db).create(
+        job_type="sync_all",
+        requested_by=user.username,
+        source="ui",
+        payload={"quick": quick},
     )
+    enqueue_sync_job(job.id, registry)
+    message = quote_plus(f"Sync queued. Job ID: {job.id}")
     return RedirectResponse(url=f"/?message={message}", status_code=303)
 
 

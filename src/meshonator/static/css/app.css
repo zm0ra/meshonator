@@ -32,6 +32,16 @@ body {
 .brand { font-weight: 800; letter-spacing: .02em; }
 .brand span { font-weight: 500; opacity: .75; }
 .container { max-width: 1280px; margin: 0 auto; padding: 1rem; }
+.footer {
+  margin-top: 1.25rem;
+  padding: .85rem 1.25rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: .85rem;
+}
 .grid { display: grid; gap: 1rem; }
 .grid.stats { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 .grid.two { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
@@ -93,4 +103,5 @@ button {
 .muted { color: var(--muted); }
 @media (max-width: 800px) {
   .topbar { align-items: start; flex-direction: column; }
+  .footer { flex-direction: column; gap: .2rem; }
 }

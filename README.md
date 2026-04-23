@@ -88,6 +88,16 @@ MESHONATOR_HTTP_PORT=8081 docker compose up --build -d
 
 UI: `http://localhost:8081`
 
+## UI-first workflow
+
+Dashboard is the primary workflow:
+
+1. Open **Discovery** and submit hosts/CIDR/endpoints.
+2. A discovery job is queued immediately.
+3. Open **Jobs** to track progress/results.
+4. Run **Sync** from Dashboard (also queued).
+5. Verify in **Nodes** and **Map**.
+
 ## How to add a node for testing
 
 ### Option A: CLI (single host)
@@ -180,6 +190,19 @@ curl -fsS http://localhost:8081/health
 ```
 
 Example response includes service and provider health status.
+
+## Build footer metadata
+
+The footer displays:
+
+- application name
+- build version
+- rebuild date
+
+Set with:
+
+- `BUILD_VERSION`
+- `BUILD_DATE`
 
 ## Extending MeshCore
 

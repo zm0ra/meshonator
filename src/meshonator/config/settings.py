@@ -1,4 +1,5 @@
 from functools import lru_cache
+from datetime import datetime, UTC
 from typing import Literal
 
 from pydantic import Field
@@ -9,6 +10,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "Meshonator"
+    build_version: str = "dev"
+    build_date: str = datetime.now(UTC).isoformat()
     app_env: Literal["dev", "test", "prod"] = "dev"
     app_host: str = "0.0.0.0"
     app_port: int = 8080

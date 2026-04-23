@@ -26,5 +26,10 @@
     {% endif %}
   </header>
   <main class="container">{% block content %}{% endblock %}</main>
+  <footer class="footer">
+    <div>{{ app_name }}</div>
+    <div>Build {{ build_version }}</div>
+    <div>Rebuild {{ build_date }}</div>
+  </footer>
 </body>
 </html>

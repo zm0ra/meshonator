@@ -16,7 +16,11 @@ services:
       retries: 10
 
   web:
-    build: .
+    build:
+      context: .
+      args:
+        BUILD_VERSION: ${BUILD_VERSION:-dev}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
     depends_on:
       db:
         condition: service_healthy

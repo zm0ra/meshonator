@@ -179,6 +179,11 @@ def ui_discovery_scan(
         return RedirectResponse(url=f"/?error={error}", status_code=303)
 
 
+@app.get("/ui/discovery/scan")
+def ui_discovery_scan_get() -> RedirectResponse:
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.post("/ui/sync/run")
 def ui_sync_run(
     quick: bool = Form(False),
@@ -197,6 +202,11 @@ def ui_sync_run(
         f"Sync finished. Endpoints: {len(results)}, failed: {failures}, mode: {'quick' if quick else 'full'}."
     )
     return RedirectResponse(url=f"/?message={message}", status_code=303)
+
+
+@app.get("/ui/sync/run")
+def ui_sync_run_get() -> RedirectResponse:
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/nodes", response_class=HTMLResponse)

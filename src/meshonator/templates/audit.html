@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Audit Log</h1>
+  <table><tr><th>Time</th><th>Actor</th><th>Source</th><th>Action</th><th>Provider</th><th>Node</th></tr>
+  {% for e in entries %}<tr><td>{{ e.created_at }}</td><td>{{ e.actor }}</td><td>{{ e.source }}</td><td>{{ e.action }}</td><td>{{ e.provider }}</td><td>{{ e.node_id }}</td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}

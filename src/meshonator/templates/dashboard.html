@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid stats">
+  <article class="card"><h3>Known Nodes</h3><div class="value">{{ total_nodes }}</div></article>
+  <article class="card"><h3>Online</h3><div class="value success">{{ online_nodes }}</div></article>
+  <article class="card"><h3>Stale/Offline</h3><div class="value warn">{{ stale_nodes }}</div></article>
+  <article class="card"><h3>Pending Sync Jobs</h3><div class="value">{{ pending_jobs }}</div></article>
+  <article class="card"><h3>Failed Jobs</h3><div class="value danger">{{ failed_jobs }}</div></article>
+</section>
+<section class="grid two">
+  <article class="card">
+    <h2>Provider Summary</h2>
+    <table><tr><th>Provider</th><th>Nodes</th></tr>
+    {% for item in provider_summary %}<tr><td>{{ item[0] }}</td><td>{{ item[1] }}</td></tr>{% endfor %}
+    </table>
+  </article>
+  <article class="card">
+    <h2>Recent Changes</h2>
+    <table><tr><th>Time</th><th>Action</th><th>Actor</th></tr>
+    {% for e in recent_changes %}<tr><td>{{ e.created_at }}</td><td>{{ e.action }}</td><td>{{ e.actor }}</td></tr>{% endfor %}
+    </table>
+  </article>
+</section>
+{% endblock %}

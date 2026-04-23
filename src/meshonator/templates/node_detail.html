@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="grid two">
+  <article class="card">
+    <h2>Identity</h2>
+    <p><b>Provider:</b> {{ node.provider }}</p>
+    <p><b>Provider Node ID:</b> {{ node.provider_node_id }}</p>
+    <p><b>Short/Long:</b> {{ node.short_name }} / {{ node.long_name }}</p>
+    <p><b>Role:</b> {{ node.role }}</p>
+    <p><b>Favorite:</b> {{ node.favorite }}</p>
+    <p><b>Firmware/Hardware:</b> {{ node.firmware_version }} / {{ node.hardware_model }}</p>
+    <p><b>Reachable:</b> {{ node.reachable }}</p>
+    <h3>Endpoints (TCP)</h3>
+    <ul>
+      {% for ep in node.endpoints %}<li>{{ ep.endpoint }} ({{ ep.source }})</li>{% endfor %}
+    </ul>
+  </article>
+  <article class="card">
+    <h2>Location</h2>
+    <div id="previewMap" style="height: 280px"></div>
+    <script>
+      const map = L.map('previewMap').setView([{{ node.latitude or 0 }}, {{ node.longitude or 0 }}], 8);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      {% if node.latitude and node.longitude %}
+      L.marker([{{ node.latitude }}, {{ node.longitude }}]).addTo(map).bindPopup('{{ node.long_name or node.provider_node_id }}');
+      {% endif %}
+    </script>
+  </article>
+</section>
+<section class="card">
+  <h2>Raw Provider Payload (Developer)</h2>
+  <pre>{{ node.raw_metadata }}</pre>
+</section>
+<section class="card">
+  <h2>Audit History</h2>
+  <table><tr><th>Time</th><th>Action</th><th>Actor</th><th>Source</th></tr>
+    {% for e in audits %}<tr><td>{{ e.created_at }}</td><td>{{ e.action }}</td><td>{{ e.actor }}</td><td>{{ e.source }}</td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meshonator</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Meshonator <span>TCP-only</span></div>
+    {% if user %}
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/nodes">Nodes</a>
+      <a href="/map">Map</a>
+      <a href="/groups">Groups</a>
+      <a href="/jobs">Jobs</a>
+      <a href="/audit">Audit</a>
+      <a href="/settings">Settings</a>
+    </nav>
+    <form method="post" action="/logout"><button>Logout ({{ user.username }})</button></form>
+    {% endif %}
+  </header>
+  <main class="container">{% block content %}{% endblock %}</main>
+</body>
+</html>

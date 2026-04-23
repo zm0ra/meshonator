@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card"><h1>Fleet Map</h1><p>TCP-only inventory map.</p><div id="fleetMap" style="height: 600px"></div></section>
+<script>
+  const map = L.map('fleetMap').setView([{{ map_default_lat }}, {{ map_default_lon }}], {{ map_default_zoom }});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+  const markers = {{ markers | tojson }};
+  const bounds = [];
+  markers.forEach(m => {
+    const color = m.reachable ? '#1f7a1f' : '#a3462c';
+    const marker = L.circleMarker([m.lat, m.lon], { radius: m.favorite ? 9 : 7, color }).addTo(map);
+    marker.bindPopup(`<b>${m.name}</b><br/>${m.provider}<br/>${m.reachable ? 'online' : 'offline'}<br/>last seen: ${m.last_seen}`);
+    bounds.push([m.lat, m.lon]);
+  });
+  if (bounds.length) map.fitBounds(bounds, { padding: [20,20] });
+</script>
+{% endblock %}

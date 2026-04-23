@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Jobs</h1>
+  <table><tr><th>ID</th><th>Type</th><th>Status</th><th>By</th><th>Source</th><th>Created</th><th>Started</th><th>Finished</th></tr>
+  {% for j in jobs %}<tr><td>{{ j.id }}</td><td>{{ j.job_type }}</td><td>{{ j.status }}</td><td>{{ j.requested_by }}</td><td>{{ j.source }}</td><td>{{ j.created_at }}</td><td>{{ j.started_at }}</td><td>{{ j.finished_at }}</td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}

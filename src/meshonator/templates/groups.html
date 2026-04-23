@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Groups</h1>
+  <table><tr><th>Name</th><th>Description</th><th>Dynamic Filter</th><th>Desired Template</th></tr>
+  {% for g in groups %}<tr><td>{{ g.name }}</td><td>{{ g.description }}</td><td><pre>{{ g.dynamic_filter }}</pre></td><td><pre>{{ g.desired_config_template }}</pre></td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}

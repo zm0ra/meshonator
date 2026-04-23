@@ -104,7 +104,7 @@ class InventoryService:
         for node in self.db.scalars(select(ManagedNodeModel)).all():
             if node.last_seen is None:
                 continue
-            delta = now - node.last_seen
+            delta = now - self._as_utc(node.last_seen)
             is_reachable = delta.total_seconds() <= stale_minutes * 60
             if node.reachable != is_reachable:
                 node.reachable = is_reachable
@@ -115,3 +115,8 @@ class InventoryService:
     def delete_node_endpoints(self, node_id: UUID) -> None:
         self.db.execute(delete(NodeEndpointModel).where(NodeEndpointModel.node_id == node_id))
         self.db.commit()
+    @staticmethod
+    def _as_utc(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)

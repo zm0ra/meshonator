@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -21,8 +22,9 @@ class SyncService:
         self.audit = AuditService(db)
         self.ops = OperationsService(db, registry)
 
-    def sync_endpoint(self, endpoint_id: str, quick: bool = False) -> dict:
-        endpoint = self.db.get(ProviderEndpointModel, endpoint_id)
+    def sync_endpoint(self, endpoint_id: str | UUID, quick: bool = False) -> dict:
+        endpoint_pk = UUID(endpoint_id) if isinstance(endpoint_id, str) else endpoint_id
+        endpoint = self.db.get(ProviderEndpointModel, endpoint_pk)
         if endpoint is None:
             raise ValueError("Endpoint not found")
 
@@ -67,10 +69,11 @@ class SyncService:
         )
         return out
 
-    def sync_node(self, node_id: str, quick: bool = False) -> dict:
+    def sync_node(self, node_id: str | UUID, quick: bool = False) -> dict:
+        node_pk = UUID(node_id) if isinstance(node_id, str) else node_id
         node = self.db.scalar(
             select(ManagedNodeModel)
-            .where(ManagedNodeModel.id == node_id)
+            .where(ManagedNodeModel.id == node_pk)
             .options(selectinload(ManagedNodeModel.endpoints))
         )
         if node is None:
@@ -89,12 +92,13 @@ class SyncService:
             self.ops.save_config_snapshot(node.id, "provider_config", cfg)
             self.db.add(NodeSnapshotModel(node_id=node.id, snapshot_type="full_sync", payload=cfg))
             self.db.commit()
-        return {"node_id": node_id, "saved_nodes": len(saved), "quick": quick}
+        return {"node_id": str(node_pk), "saved_nodes": len(saved), "quick": quick}
 
-    def node_details(self, node_id: str) -> ManagedNodeModel | None:
+    def node_details(self, node_id: str | UUID) -> ManagedNodeModel | None:
+        node_pk = UUID(node_id) if isinstance(node_id, str) else node_id
         stmt = (
             select(ManagedNodeModel)
-            .where(ManagedNodeModel.id == node_id)
+            .where(ManagedNodeModel.id == node_pk)
             .options(selectinload(ManagedNodeModel.endpoints))
         )
         return self.db.scalar(stmt)

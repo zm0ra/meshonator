@@ -1,11 +1,10 @@
 # Meshonator
 
-Meshonator to self-hosted web fleet manager dla Meshtastic zaprojektowany jako **TCP-only** od pierwszej linii kodu, z architekturą gotową pod drugi provider (MeshCore).
+Meshonator is a self-hosted web fleet manager for Meshtastic with a provider architecture ready for MeshCore.
 
-## TCP-only (ważne)
+## Transport
 
-Aktualna wersja Meshonator obsługuje wyłącznie endpointy `tcp://host:port`.
-Nie implementuje serial, BLE ani innych lokalnych transportów.
+Meshonator currently uses TCP endpoints (`tcp://host:port`).
 
 ## Stack
 
@@ -13,47 +12,45 @@ Nie implementuje serial, BLE ani innych lokalnych transportów.
 - FastAPI + Jinja2 + HTMX + Leaflet
 - SQLAlchemy 2.x + Alembic
 - APScheduler
-- PostgreSQL (domyślnie w Docker), SQLite (dev)
+- PostgreSQL (Docker default), SQLite (dev mode)
 - Typer CLI
 - pytest
 
-## Architektura
+## Architecture
 
-Modular monolith:
+Modular monolith boundaries:
 
-- `src/meshonator/api` - API i panel web
-- `src/meshonator/domain` - modele domenowe niezależne od protokołu
-- `src/meshonator/providers` - provider contract + Meshtastic + MeshCore experimental
-- `src/meshonator/discovery` - skan IP/CIDR/host (TCP)
-- `src/meshonator/inventory` - lokalny inventory/cache
+- `src/meshonator/api` - HTTP API + web UI
+- `src/meshonator/domain` - protocol-agnostic domain models
+- `src/meshonator/providers` - provider contract + Meshtastic + MeshCore (experimental)
+- `src/meshonator/discovery` - host/IP/CIDR discovery
+- `src/meshonator/inventory` - local node inventory and cache
 - `src/meshonator/sync` - full/quick/scheduled sync
-- `src/meshonator/operations` - patch config, diff, desired-state
-- `src/meshonator/groups` - grupy ręczne i dynamiczne
-- `src/meshonator/jobs` - job lifecycle
+- `src/meshonator/operations` - config patch, desired state, drift diff
+- `src/meshonator/groups` - manual and dynamic groups
+- `src/meshonator/jobs` - job lifecycle and status
 - `src/meshonator/audit` - audit trail
-- `src/meshonator/map` - markery mapy
-- `src/meshonator/cli` - CLI pomocnicze
+- `src/meshonator/map` - map markers and filtering
+- `src/meshonator/cli` - helper CLI
 
-## Providery
+## Providers
 
-### MeshtasticProvider (produkcyjny)
+### MeshtasticProvider (primary)
 
-- transport: TCP
-- główny backend: oficjalna biblioteka Python `meshtastic`
-- capability matrix i operation matrix expose przez API/UI
-- CLI fallback jest opakowany adapterem ze structured errors i timeoutami
+- Uses official Meshtastic Python library as the main backend.
+- Exposes capability matrix and operation matrix for UI/API gating.
+- CLI fallback is wrapped with timeout + structured errors.
 
 ### MeshCoreProvider (experimental)
 
-- transport: TCP
-- capability matrix + operation matrix
-- skeleton integracyjny gotowy pod rozszerzenie
-- nieobsługiwane operacje oznaczone jawnie jako `unsupported_or_restricted`
+- Experimental provider skeleton with the same contract.
+- Capability and operation matrices are explicit.
+- Unsupported operations are returned as `unsupported_or_restricted`.
 
 ## Capability-driven design
 
-UI/API nie zakładają identycznych możliwości providerów.
-Każdy provider i node ma capability flags, np.:
+UI/API do not assume equal feature parity between providers.
+Capabilities include:
 
 - `can_discover_over_tcp`
 - `can_remote_read_config`
@@ -65,7 +62,7 @@ Każdy provider i node ma capability flags, np.:
 - `has_favorites`
 - `has_channels`
 
-## Quick start (local)
+## Quick Start (local)
 
 ```bash
 python3.12 -m venv .venv
@@ -77,109 +74,113 @@ meshonator bootstrap
 uvicorn meshonator.api.app:app --reload --host 0.0.0.0 --port 8080
 ```
 
-Panel: `http://localhost:8080`
-Login domyślny: `admin/admin` (zmień w `.env`).
+UI: `http://localhost:8080`
+Default credentials: `admin/admin`.
 
-## Quick start (Docker)
+## Quick Start (Docker)
+
+If port `8080` is already used on your machine, set `MESHONATOR_HTTP_PORT`.
 
 ```bash
 cp .env.example .env
-docker compose up --build
+MESHONATOR_HTTP_PORT=8081 docker compose up --build -d
 ```
 
-Serwisy:
+UI: `http://localhost:8081`
 
-- app: `http://localhost:8080`
-- postgres: `localhost:5432`
+## How to add a node for testing
 
-## Discovery i scan targets
-
-API:
+### Option A: CLI (single host)
 
 ```bash
-curl -X POST http://localhost:8080/api/discovery/scan \
-  -H 'Content-Type: application/json' \
-  -d '{"provider":"meshtastic","hosts":["10.10.0.15"],"cidrs":["10.10.0.0/24"]}'
-```
-
-CLI:
-
-```bash
-meshonator discover-scan --cidr 10.10.0.0/24
-meshonator discover-add-host 10.10.0.15
-```
-
-## Sync
-
-```bash
+meshonator discover-add-host 10.10.0.15 --provider meshtastic
 meshonator nodes-sync-all
+```
+
+### Option B: CLI (CIDR range)
+
+```bash
+meshonator discover-scan --cidr 10.10.0.0/24 --provider meshtastic
 meshonator nodes-sync-all --quick
 ```
 
-API:
+### Option C: API (single host / CIDR)
 
 ```bash
-curl -X POST "http://localhost:8080/api/sync?quick=true"
+curl -X POST http://localhost:8081/api/discovery/scan \
+  -H 'Content-Type: application/json' \
+  -d '{"provider":"meshtastic","hosts":["10.10.0.15"],"cidrs":["10.10.0.0/24"]}'
+
+curl -X POST "http://localhost:8081/api/sync?quick=true"
 ```
 
-## Grupy i batch
+### Option D: import hosts file (YAML/JSON)
 
-- grupy ręczne/dynamiczne (`node_groups`, `node_group_members`)
-- batch patch przez `/api/batch/patch`
-- każde działanie zapisywane w `audit_logs`
+Example `targets.yml`:
 
-## CLI helper - przykłady
+```yaml
+hosts:
+  - 10.10.0.15
+  - 10.10.0.16
+cidrs:
+  - 10.10.1.0/24
+endpoints:
+  - tcp://10.10.2.10:4403
+```
+
+Run:
+
+```bash
+meshonator discover-import --path targets.yml --provider meshtastic
+meshonator nodes-sync-all
+```
+
+## Useful CLI commands
 
 ```bash
 meshonator bootstrap
-meshonator discover-scan --cidr 10.10.0.0/24
-meshonator discover-add-host 10.10.0.15
 meshonator providers-test --provider meshtastic --tcp 10.10.0.20
-meshonator nodes-sync-all
+meshonator providers-capabilities
 meshonator nodes-export --format yaml
 meshonator jobs-run-sync-group core-west
 meshonator db-seed-demo
-meshonator providers-capabilities
 ```
 
-## Bezpieczeństwo
+## Security model
 
-- logowanie użytkownik/hasło (role: `viewer`, `operator`, `admin`)
-- RBAC po endpointach write
-- audyt zmian (`audit_logs`) i źródło operacji (`ui/api/cli/scheduler`)
-- timeouty provider/CLI fallback
-- batch write tylko dla roli admin
+- Session login (roles: `viewer`, `operator`, `admin`)
+- RBAC on write endpoints
+- Audit events persisted in `audit_logs`
+- Provider/CLI timeout controls
 
-## Migracje
+## Migrations
 
 ```bash
 alembic upgrade head
 ```
 
-Początkowa migracja: `alembic/versions/20260423_0001_initial.py`.
+Initial migration: `alembic/versions/20260423_0001_initial.py`.
 
-## Testy
+## Tests
 
 ```bash
 pytest
 ```
 
-Zakres:
+Current coverage includes:
 
-- unit (tcp scan, capability matrix, diff)
-- API (health, login)
-- integration (discovery + fake provider)
+- unit tests (scan helpers, capability matrix, diff behavior)
+- API tests (health, login)
+- integration test (discovery with fake provider)
 
-## Ograniczenia i jawne statusy
+## Health check
 
-- transport jest **wyłącznie TCP**
-- operacje zdalne zależne od ograniczeń protokołu i uprawnień/kluczy
-- to, czego provider nie wspiera stabilnie, jest oznaczone jako:
-  - `supported_natively`
-  - `supported_via_cli_fallback`
-  - `unsupported_or_restricted`
+```bash
+curl -fsS http://localhost:8081/health
+```
 
-## Rozszerzenie o MeshCore
+Example response includes service and provider health status.
 
-Obecna architektura ma wspólny kontrakt providera (`providers/base.py`) i capability gating.
-Dla pełnego MeshCore wystarczy rozszerzyć `src/meshonator/providers/meshcore/provider.py` bez przepisywania domeny, UI i DB.
+## Extending MeshCore
+
+MeshCore can be extended in `src/meshonator/providers/meshcore/provider.py` without rewriting domain models, UI, or database schema.

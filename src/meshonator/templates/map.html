@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card"><h1>Fleet Map</h1><p>TCP-only inventory map.</p><div id="fleetMap" style="height: 600px"></div></section>
+<section class="card"><h1>Fleet Map</h1><p>Inventory map.</p><div id="fleetMap" style="height: 600px"></div></section>
 <script>
   const map = L.map('fleetMap').setView([{{ map_default_lat }}, {{ map_default_lon }}], {{ map_default_zoom }});
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from urllib.parse import quote_plus
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -43,6 +44,15 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="src/meshonator/static"), name="static")
 templates = Jinja2Templates(directory="src/meshonator/templates")
+
+
+def _parse_multi_value(raw: str) -> list[str]:
+    values = []
+    for chunk in raw.replace(",", "\n").splitlines():
+        item = chunk.strip()
+        if item:
+            values.append(item)
+    return values
 
 
 @app.on_event("startup")
@@ -106,6 +116,9 @@ def dashboard(
         db.execute(select(ManagedNodeModel.provider, func.count()).group_by(ManagedNodeModel.provider)).all()
     )
     recent_changes = list(db.scalars(select(AuditLogModel).order_by(AuditLogModel.created_at.desc()).limit(10)).all())
+    providers = [provider.name for provider in registry.all()]
+    ui_message = request.query_params.get("message")
+    ui_error = request.query_params.get("error")
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -118,8 +131,72 @@ def dashboard(
             "failed_jobs": failed_jobs,
             "provider_summary": provider_summary,
             "recent_changes": recent_changes,
+            "providers": providers,
+            "ui_message": ui_message,
+            "ui_error": ui_error,
         },
     )
+
+
+@app.post("/ui/discovery/scan")
+def ui_discovery_scan(
+    provider: str = Form("meshtastic"),
+    hosts_text: str = Form(""),
+    cidrs_text: str = Form(""),
+    endpoints_text: str = Form(""),
+    port: int | None = Form(default=None),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    hosts = _parse_multi_value(hosts_text)
+    cidrs = _parse_multi_value(cidrs_text)
+    endpoints = _parse_multi_value(endpoints_text)
+    try:
+        found = DiscoveryService(db, registry).scan(
+            provider_name=provider,
+            hosts=hosts,
+            cidrs=cidrs,
+            manual_endpoints=endpoints,
+            port=port,
+            source="ui",
+        )
+        AuditService(db).log(
+            actor=user.username,
+            source="ui",
+            action="discovery.scan",
+            provider=provider,
+            metadata={
+                "hosts": hosts,
+                "cidrs": cidrs,
+                "manual_endpoints": endpoints,
+                "port": port,
+            },
+        )
+        message = quote_plus(f"Discovery complete: {len(found)} reachable endpoints.")
+        return RedirectResponse(url=f"/?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Discovery failed: {exc}")
+        return RedirectResponse(url=f"/?error={error}", status_code=303)
+
+
+@app.post("/ui/sync/run")
+def ui_sync_run(
+    quick: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    jobs = JobsService(db)
+    job = jobs.create(job_type="sync_all", requested_by=user.username, source="ui", payload={"quick": quick})
+    jobs.start(job.id)
+    results = SyncService(db, registry).sync_all(quick=quick)
+    success = all(result.get("status") == "success" for result in results)
+    jobs.finish(job.id, success=success)
+    AuditService(db).log(actor=user.username, source="ui", action="sync.all", metadata={"results": results})
+    failures = sum(1 for result in results if result.get("status") != "success")
+    message = quote_plus(
+        f"Sync finished. Endpoints: {len(results)}, failed: {failures}, mode: {'quick' if quick else 'full'}."
+    )
+    return RedirectResponse(url=f"/?message={message}", status_code=303)
 
 
 @app.get("/nodes", response_class=HTMLResponse)

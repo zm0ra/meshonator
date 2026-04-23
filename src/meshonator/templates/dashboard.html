@@ -1,11 +1,48 @@
 {% extends "base.html" %}
 {% block content %}
+{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
 <section class="grid stats">
   <article class="card"><h3>Known Nodes</h3><div class="value">{{ total_nodes }}</div></article>
   <article class="card"><h3>Online</h3><div class="value success">{{ online_nodes }}</div></article>
   <article class="card"><h3>Stale/Offline</h3><div class="value warn">{{ stale_nodes }}</div></article>
   <article class="card"><h3>Pending Sync Jobs</h3><div class="value">{{ pending_jobs }}</div></article>
   <article class="card"><h3>Failed Jobs</h3><div class="value danger">{{ failed_jobs }}</div></article>
+</section>
+<section class="grid two">
+  <article class="card">
+    <h2>Discovery</h2>
+    <form method="post" action="/ui/discovery/scan" class="stack">
+      <label>Provider
+        <select name="provider">
+          {% for provider in providers %}
+          <option value="{{ provider }}">{{ provider }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Hosts (IP/hostname, comma or new line separated)
+        <textarea name="hosts_text" rows="3" placeholder="10.10.0.15"></textarea>
+      </label>
+      <label>CIDR ranges (comma or new line separated)
+        <textarea name="cidrs_text" rows="3" placeholder="10.10.0.0/24"></textarea>
+      </label>
+      <label>Manual endpoints (comma or new line separated)
+        <textarea name="endpoints_text" rows="2" placeholder="tcp://10.10.0.20:4403"></textarea>
+      </label>
+      <label>Port override (optional)
+        <input type="number" name="port" min="1" max="65535" placeholder="4403" />
+      </label>
+      <button type="submit">Run Discovery</button>
+    </form>
+  </article>
+  <article class="card">
+    <h2>Sync</h2>
+    <form method="post" action="/ui/sync/run" class="stack">
+      <label><input type="checkbox" name="quick" value="true" /> Quick sync</label>
+      <button type="submit">Run Sync</button>
+    </form>
+    <p class="muted">After sync, open <a href="/nodes">Nodes</a> to verify inventory.</p>
+  </article>
 </section>
 <section class="grid two">
   <article class="card">

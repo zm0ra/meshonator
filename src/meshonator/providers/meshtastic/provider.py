@@ -106,38 +106,16 @@ class MeshtasticProvider(Provider):
                     firmware=FirmwareInfo(version=(my_info.get("firmwareVersion") if isinstance(my_info, dict) else None)),
                     hardware=HardwareInfo(model=(my_info.get("hwModel") if isinstance(my_info, dict) else None)),
                     capabilities=self.capabilities(),
-                    raw_metadata=to_json_safe({"myInfo": my_info}),
+                    # Keep neighbor visibility for future views, but inventory only managed TCP endpoints.
+                    raw_metadata=to_json_safe(
+                        {
+                            "myInfo": my_info,
+                            "observed_nodes_count": len(nodes_db) if isinstance(nodes_db, dict) else 0,
+                        }
+                    ),
                 )
             )
 
-        for node_id, raw in nodes_db.items():
-            pos = raw.get("position", {}) if isinstance(raw, dict) else {}
-            user = raw.get("user", {}) if isinstance(raw, dict) else {}
-            out.append(
-                ManagedNode(
-                    provider=ProviderType.MESHTASTIC,
-                    provider_node_id=str(node_id),
-                    node_num=raw.get("num") if isinstance(raw, dict) else None,
-                    short_name=user.get("shortName"),
-                    long_name=user.get("longName"),
-                    role=user.get("role"),
-                    favorite=False,
-                    first_seen=now,
-                    last_seen=now,
-                    reachable=True,
-                    location=Location(
-                        latitude=pos.get("latitude"),
-                        longitude=pos.get("longitude"),
-                        altitude=pos.get("altitude"),
-                        source="meshtastic_nodes_db",
-                        updated_at=now,
-                    ),
-                    firmware=FirmwareInfo(version=user.get("firmwareVersion")),
-                    hardware=HardwareInfo(model=user.get("hwModel")),
-                    capabilities=self.capabilities(),
-                    raw_metadata=to_json_safe(raw if isinstance(raw, dict) else {"raw": str(raw)}),
-                )
-            )
         return out
 
     def fetch_config(self, conn: Any, provider_node_id: str) -> dict[str, Any]:

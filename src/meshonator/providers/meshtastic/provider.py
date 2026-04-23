@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from google.protobuf.json_format import MessageToDict
+
 from meshonator.config.settings import get_settings
 from meshonator.domain.models import (
     ConfigPatch,
@@ -78,21 +80,29 @@ class MeshtasticProvider(Provider):
         if TCPInterface is None:
             raise ProviderError("meshtastic python library unavailable")
         try:
-            return TCPInterface(hostname=endpoint.host, portNumber=endpoint.port)
+            conn = TCPInterface(hostname=endpoint.host, portNumber=endpoint.port)
+            try:
+                conn.waitForConfig()
+            except Exception:
+                # Continue even if full config fetch is partial; caller can still use available data.
+                pass
+            return conn
         except Exception as exc:  # pragma: no cover
             raise ProviderError(f"Failed to connect to {endpoint.endpoint}: {exc}") from exc
 
     def fetch_nodes(self, conn: Any) -> list[ManagedNode]:
         now = datetime.now(timezone.utc)
-        my_info = getattr(conn, "myInfo", None) or {}
         local_node = getattr(conn, "localNode", None)
-        nodes_db = getattr(conn, "nodes", {}) or {}
+        info_payload = _build_meshtastic_info_payload(conn)
+        my_info = info_payload.get("myInfo", {})
+        metadata = info_payload.get("metadata", {})
+        owner = info_payload.get("owner", {})
 
         out: list[ManagedNode] = []
         if local_node is not None:
-            short_name = getattr(local_node, "user", {}).get("shortName") if getattr(local_node, "user", None) else None
-            long_name = getattr(local_node, "user", {}).get("longName") if getattr(local_node, "user", None) else None
-            node_num = my_info.get("my_node_num") if isinstance(my_info, dict) else None
+            short_name = owner.get("shortName")
+            long_name = owner.get("longName")
+            node_num = my_info.get("myNodeNum") if isinstance(my_info, dict) else None
             out.append(
                 ManagedNode(
                     provider=ProviderType.MESHTASTIC,
@@ -103,33 +113,27 @@ class MeshtasticProvider(Provider):
                     first_seen=now,
                     last_seen=now,
                     reachable=True,
-                    firmware=FirmwareInfo(version=(my_info.get("firmwareVersion") if isinstance(my_info, dict) else None)),
-                    hardware=HardwareInfo(model=(my_info.get("hwModel") if isinstance(my_info, dict) else None)),
+                    firmware=FirmwareInfo(version=(metadata.get("firmwareVersion") if isinstance(metadata, dict) else None)),
+                    hardware=HardwareInfo(model=(metadata.get("hwModel") if isinstance(metadata, dict) else None)),
                     capabilities=self.capabilities(),
-                    # Keep neighbor visibility for future views, but inventory only managed TCP endpoints.
-                    raw_metadata=to_json_safe(
-                        {
-                            "myInfo": my_info,
-                            "observed_nodes_count": len(nodes_db) if isinstance(nodes_db, dict) else 0,
-                        }
-                    ),
+                    raw_metadata=to_json_safe(info_payload),
                 )
             )
 
         return out
 
     def fetch_config(self, conn: Any, provider_node_id: str) -> dict[str, Any]:
-        local_node = getattr(conn, "localNode", None)
-        if local_node is None:
-            raise ProviderError("No local node available")
-        local_config = getattr(local_node, "localConfig", None)
-        module_config = getattr(local_node, "moduleConfig", None)
-        channels = getattr(local_node, "channels", None)
+        info_payload = _build_meshtastic_info_payload(conn)
         return {
             "provider_node_id": provider_node_id,
-            "localConfig": _safe_dict(local_config),
-            "moduleConfig": _safe_dict(module_config),
-            "channels": _safe_list(channels),
+            "owner": info_payload.get("owner", {}),
+            "myInfo": info_payload.get("myInfo", {}),
+            "metadata": info_payload.get("metadata", {}),
+            "nodesInMesh": info_payload.get("nodesInMesh", {}),
+            "preferences": info_payload.get("preferences", {}),
+            "modulePreferences": info_payload.get("modulePreferences", {}),
+            "channels": info_payload.get("channels", []),
+            "primaryChannelUrl": info_payload.get("primaryChannelUrl"),
         }
 
     def apply_config_patch(
@@ -201,3 +205,57 @@ def _safe_list(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, list):
         return [_safe_dict(v) for v in value]
     return [_safe_dict(value)]
+
+
+def _msg_to_dict(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    try:
+        return MessageToDict(value, preserving_proto_field_name=False)
+    except Exception:
+        return _safe_dict(value)
+
+
+def _build_meshtastic_info_payload(conn: Any) -> dict[str, Any]:
+    local_node = getattr(conn, "localNode", None)
+    nodes_in_mesh = getattr(conn, "nodes", {}) or {}
+    my_info = _msg_to_dict(getattr(conn, "myInfo", None))
+    metadata = _msg_to_dict(getattr(conn, "metadata", None))
+
+    owner: dict[str, Any] = {}
+    my_node_num = my_info.get("myNodeNum")
+    if isinstance(nodes_in_mesh, dict):
+        for value in nodes_in_mesh.values():
+            if not isinstance(value, dict):
+                continue
+            if my_node_num is not None and value.get("num") == my_node_num:
+                user = value.get("user")
+                if isinstance(user, dict):
+                    owner = user
+                break
+
+    preferences = {}
+    module_preferences = {}
+    channels: list[dict[str, Any]] = []
+    primary_url = None
+    if local_node is not None:
+        preferences = _msg_to_dict(getattr(local_node, "localConfig", None))
+        module_preferences = _msg_to_dict(getattr(local_node, "moduleConfig", None))
+        for channel in getattr(local_node, "channels", []) or []:
+            channels.append(_msg_to_dict(channel))
+        if hasattr(local_node, "getURL"):
+            try:
+                primary_url = local_node.getURL()
+            except Exception:
+                primary_url = None
+
+    return {
+        "owner": owner,
+        "myInfo": my_info,
+        "metadata": metadata,
+        "nodesInMesh": to_json_safe(nodes_in_mesh),
+        "preferences": preferences,
+        "modulePreferences": module_preferences,
+        "channels": channels,
+        "primaryChannelUrl": primary_url,
+    }

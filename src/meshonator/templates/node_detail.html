@@ -73,6 +73,16 @@
   </form>
 </section>
 <section class="card">
+  <h2>Node Info Snapshot</h2>
+  <p><b>Owner:</b> {{ node.raw_metadata.get('owner', {}).get('longName') }} ({{ node.raw_metadata.get('owner', {}).get('shortName') }})</p>
+  <p><b>My Node Num:</b> {{ node.raw_metadata.get('myInfo', {}).get('myNodeNum') }}</p>
+  <p><b>Firmware:</b> {{ node.raw_metadata.get('metadata', {}).get('firmwareVersion') }}</p>
+  <p><b>Hardware:</b> {{ node.raw_metadata.get('metadata', {}).get('hwModel') }}</p>
+  <p><b>Role:</b> {{ node.raw_metadata.get('metadata', {}).get('role') }}</p>
+  <p><b>Known mesh nodes:</b> {{ node.raw_metadata.get('nodesInMesh', {})|length }}</p>
+  <p><b>Primary channel URL:</b> {{ node.raw_metadata.get('primaryChannelUrl') }}</p>
+</section>
+<section class="card">
   <h2>Raw Provider Payload (Developer)</h2>
   <pre>{{ node.raw_metadata }}</pre>
 </section>

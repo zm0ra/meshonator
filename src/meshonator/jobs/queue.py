@@ -81,7 +81,18 @@ def _run_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
                 message=f"Discovery finished with {len(found)} endpoints",
                 details={"endpoints": [item.endpoint for item in found]},
             )
-            jobs.finish(job_id, success=True)
+            sync_failed = []
+            if payload.get("auto_sync", True):
+                sync_results = SyncService(db, registry).sync_all(quick=True)
+                sync_failed = [item for item in sync_results if item.get("status") != "success"]
+                jobs.add_result(
+                    job_id=job_id,
+                    status="success" if not sync_failed else "failed",
+                    node_id=None,
+                    message=f"Auto-sync after discovery: {len(sync_results)} endpoints, {len(sync_failed)} failed",
+                    details={"sync_results": sync_results},
+                )
+            jobs.finish(job_id, success=(len(sync_failed) == 0))
             audit.log(
                 actor=job.requested_by,
                 source=job.source,

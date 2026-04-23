@@ -209,6 +209,7 @@ def ui_discovery_scan(
                 "cidrs": cidrs,
                 "manual_endpoints": endpoints,
                 "port": port,
+                "auto_sync": True,
                 "source": "ui",
             },
         )

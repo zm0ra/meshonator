@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
 from uuid import UUID
 
@@ -99,6 +100,7 @@ def startup() -> None:
             password=settings.bootstrap_admin_password,
             role=settings.bootstrap_admin_role,
         )
+        JobsService(db).recover_stale_running_jobs(stale_after_minutes=15)
 
 
 @app.get("/health")
@@ -145,7 +147,15 @@ def dashboard(
     online_nodes = db.scalar(select(func.count()).select_from(ManagedNodeModel).where(ManagedNodeModel.reachable.is_(True))) or 0
     stale_nodes = db.scalar(select(func.count()).select_from(ManagedNodeModel).where(ManagedNodeModel.reachable.is_(False))) or 0
     pending_jobs = db.scalar(select(func.count()).select_from(JobModel).where(JobModel.status.in_(["pending", "running"]))) or 0
-    failed_jobs = db.scalar(select(func.count()).select_from(JobModel).where(JobModel.status == "failed")) or 0
+    failed_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    failed_jobs = (
+        db.scalar(
+            select(func.count())
+            .select_from(JobModel)
+            .where(JobModel.status == "failed", JobModel.finished_at.is_not(None), JobModel.finished_at >= failed_cutoff)
+        )
+        or 0
+    )
     provider_summary = list(
         db.execute(select(ManagedNodeModel.provider, func.count()).group_by(ManagedNodeModel.provider)).all()
     )

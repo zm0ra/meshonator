@@ -47,3 +47,30 @@ class JobsService:
 
     def list_results(self, limit: int = 500) -> list[JobResultModel]:
         return list(self.db.scalars(select(JobResultModel).order_by(JobResultModel.created_at.desc()).limit(limit)).all())
+
+    def recover_stale_running_jobs(self, stale_after_minutes: int = 15) -> int:
+        now = datetime.now(timezone.utc)
+        cutoff = now.timestamp() - (stale_after_minutes * 60)
+        recovered = 0
+        rows = list(self.db.scalars(select(JobModel).where(JobModel.status.in_(["pending", "running"]))).all())
+        for job in rows:
+            anchor = job.started_at or job.created_at
+            if anchor is None:
+                continue
+            if anchor.timestamp() >= cutoff:
+                continue
+            job.status = "failed"
+            job.finished_at = now
+            self.db.add(
+                JobResultModel(
+                    job_id=job.id,
+                    status="failed",
+                    node_id=None,
+                    message="Recovered stale job during startup",
+                    details={"reason": "stale_recovery", "stale_after_minutes": stale_after_minutes},
+                )
+            )
+            recovered += 1
+        if recovered:
+            self.db.commit()
+        return recovered

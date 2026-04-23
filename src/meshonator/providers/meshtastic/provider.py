@@ -18,6 +18,7 @@ from meshonator.domain.models import (
 )
 from meshonator.providers.base import Provider, ProviderConnection, ProviderError
 from meshonator.providers.meshtastic.cli_fallback import MeshtasticCliFallback
+from meshonator.providers.utils.json_safe import to_json_safe
 from meshonator.providers.utils.tcp_scan import tcp_is_open
 
 try:
@@ -105,7 +106,7 @@ class MeshtasticProvider(Provider):
                     firmware=FirmwareInfo(version=(my_info.get("firmwareVersion") if isinstance(my_info, dict) else None)),
                     hardware=HardwareInfo(model=(my_info.get("hwModel") if isinstance(my_info, dict) else None)),
                     capabilities=self.capabilities(),
-                    raw_metadata={"myInfo": my_info},
+                    raw_metadata=to_json_safe({"myInfo": my_info}),
                 )
             )
 
@@ -134,7 +135,7 @@ class MeshtasticProvider(Provider):
                     firmware=FirmwareInfo(version=user.get("firmwareVersion")),
                     hardware=HardwareInfo(model=user.get("hwModel")),
                     capabilities=self.capabilities(),
-                    raw_metadata=raw if isinstance(raw, dict) else {"raw": str(raw)},
+                    raw_metadata=to_json_safe(raw if isinstance(raw, dict) else {"raw": str(raw)}),
                 )
             )
         return out

@@ -54,7 +54,7 @@ def upgrade() -> None:
         uuid_col(),
         sa.Column("provider", sa.String(length=64), nullable=False),
         sa.Column("provider_node_id", sa.String(length=128), nullable=False),
-        sa.Column("node_num", sa.Integer(), nullable=True),
+        sa.Column("node_num", sa.BigInteger(), nullable=True),
         sa.Column("short_name", sa.String(length=64), nullable=True),
         sa.Column("long_name", sa.String(length=128), nullable=True),
         sa.Column("firmware_version", sa.String(length=128), nullable=True),

@@ -8,7 +8,10 @@ from meshonator.audit.service import AuditService
 from meshonator.db.models import JobModel
 from meshonator.db.session import SessionLocal
 from meshonator.discovery.service import DiscoveryService
+from meshonator.domain.models import ConfigPatch
+from meshonator.groups.service import GroupsService
 from meshonator.jobs.service import JobsService
+from meshonator.operations.service import OperationsService
 from meshonator.providers.registry import ProviderRegistry
 from meshonator.sync.service import SyncService
 
@@ -21,6 +24,14 @@ def enqueue_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
 
 def enqueue_sync_job(job_id: UUID, registry: ProviderRegistry) -> None:
     executor.submit(_run_sync_job, job_id, registry)
+
+
+def enqueue_group_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    executor.submit(_run_group_patch_job, job_id, registry)
+
+
+def enqueue_node_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    executor.submit(_run_node_patch_job, job_id, registry)
 
 
 def _run_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
@@ -95,5 +106,126 @@ def _run_sync_job(job_id: UUID, registry: ProviderRegistry) -> None:
                 },
             )
         except Exception as exc:
+            jobs.add_result(job_id=job_id, status="failed", node_id=None, message=str(exc), details={})
+            jobs.finish(job_id, success=False)
+
+
+def _run_group_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    with SessionLocal() as db:
+        jobs = JobsService(db)
+        job = db.get(JobModel, job_id)
+        if job is None:
+            return
+        jobs.start(job_id)
+        payload = job.payload or {}
+        group_id = payload.get("group_id")
+        dry_run = bool(payload.get("dry_run", True))
+        patch_payload = payload.get("patch", {})
+
+        try:
+            if group_id is None:
+                raise ValueError("Missing group_id")
+            groups = GroupsService(db)
+            group = groups.get_group(UUID(group_id))
+            if group is None:
+                raise ValueError("Group not found")
+
+            members = groups.resolve_all_members(group)
+            ops = OperationsService(db, registry)
+            patch = ConfigPatch(**patch_payload)
+
+            success_count = 0
+            fail_count = 0
+            for node in members:
+                try:
+                    result = ops.apply_patch(
+                        node_id=node.id,
+                        patch=patch,
+                        actor=job.requested_by,
+                        source=job.source,
+                        dry_run=dry_run,
+                    )
+                    jobs.add_result(
+                        job_id=job_id,
+                        status="success",
+                        node_id=node.id,
+                        message="Group patch applied",
+                        details={"result": result},
+                    )
+                    success_count += 1
+                except Exception as node_exc:
+                    db.rollback()
+                    jobs.add_result(
+                        job_id=job_id,
+                        status="failed",
+                        node_id=node.id,
+                        message=str(node_exc),
+                        details={},
+                    )
+                    fail_count += 1
+
+            jobs.finish(job_id, success=fail_count == 0)
+            AuditService(db).log(
+                actor=job.requested_by,
+                source=job.source,
+                action="group.apply_template",
+                group_id=UUID(group_id),
+                metadata={
+                    "dry_run": dry_run,
+                    "members": len(members),
+                    "success_count": success_count,
+                    "fail_count": fail_count,
+                    "completed_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        except Exception as exc:
+            db.rollback()
+            jobs.add_result(job_id=job_id, status="failed", node_id=None, message=str(exc), details={})
+            jobs.finish(job_id, success=False)
+
+
+def _run_node_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    with SessionLocal() as db:
+        jobs = JobsService(db)
+        job = db.get(JobModel, job_id)
+        if job is None:
+            return
+        jobs.start(job_id)
+        payload = job.payload or {}
+        node_id = payload.get("node_id")
+        dry_run = bool(payload.get("dry_run", True))
+        patch_payload = payload.get("patch", {})
+
+        try:
+            if node_id is None:
+                raise ValueError("Missing node_id")
+            patch = ConfigPatch(**patch_payload)
+            result = OperationsService(db, registry).apply_patch(
+                node_id=UUID(node_id),
+                patch=patch,
+                actor=job.requested_by,
+                source=job.source,
+                dry_run=dry_run,
+            )
+            jobs.add_result(
+                job_id=job_id,
+                status="success",
+                node_id=UUID(node_id),
+                message="Node patch applied",
+                details={"result": result},
+            )
+            jobs.finish(job_id, success=True)
+            AuditService(db).log(
+                actor=job.requested_by,
+                source=job.source,
+                action="node.patch.queued",
+                node_id=UUID(node_id),
+                metadata={
+                    "dry_run": dry_run,
+                    "completed_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        except Exception as exc:
+            db.rollback()
             jobs.add_result(job_id=job_id, status="failed", node_id=None, message=str(exc), details={})
             jobs.finish(job_id, success=False)

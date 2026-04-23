@@ -1,6 +1,6 @@
 # Meshonator
 
-Meshonator is a self-hosted web fleet manager for Meshtastic with a provider architecture ready for MeshCore.
+Meshonator is a web fleet manager for Meshtastic with a provider architecture ready for MeshCore.
 
 ## Transport
 

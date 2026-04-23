@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from meshonator.db.models import ManagedNodeModel, NodeEndpointModel
 from meshonator.domain.models import ManagedNode
+from meshonator.providers.utils.json_safe import to_json_safe
 
 
 class InventoryService:
@@ -49,7 +50,7 @@ class InventoryService:
             db_node.reachable = node.reachable
             db_node.last_successful_sync = now
             db_node.capability_matrix = node.capabilities.model_dump()
-            db_node.raw_metadata = node.raw_metadata
+            db_node.raw_metadata = to_json_safe(node.raw_metadata)
 
             endpoint_row = self.db.scalar(
                 select(NodeEndpointModel).where(NodeEndpointModel.node_id == db_node.id, NodeEndpointModel.endpoint == endpoint)

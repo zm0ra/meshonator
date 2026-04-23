@@ -1,1 +1,1 @@
-window.Meshonator = { transport: "tcp-only" };
+window.Meshonator = { transport: "tcp" };

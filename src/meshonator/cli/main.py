@@ -19,7 +19,7 @@ from meshonator.discovery.service import DiscoveryService
 from meshonator.inventory.service import InventoryService
 from meshonator.sync.service import SyncService
 
-app = typer.Typer(help="Meshonator CLI (TCP-only)")
+app = typer.Typer(help="Meshonator CLI")
 console = Console()
 settings = get_settings()
 
@@ -45,14 +45,14 @@ def discover_scan(
 ) -> None:
     with with_db() as db:
         found = DiscoveryService(db, registry).scan(provider_name=provider, hosts=host, cidrs=cidr, port=port, source="cli")
-    console.print_json(data={"count": len(found), "endpoints": [f.endpoint for f in found], "transport": "tcp-only"})
+    console.print_json(data={"count": len(found), "endpoints": [f.endpoint for f in found], "transport": "tcp"})
 
 
 @app.command("discover-add-host")
 def discover_add_host(host: str, provider: str = "meshtastic", port: int | None = None) -> None:
     with with_db() as db:
         found = DiscoveryService(db, registry).scan(provider_name=provider, hosts=[host], port=port, source="cli")
-    console.print_json(data={"count": len(found), "host": host, "transport": "tcp-only"})
+    console.print_json(data={"count": len(found), "host": host, "transport": "tcp"})
 
 
 @app.command("discover-import")
@@ -74,7 +74,7 @@ def discover_import(path: str, provider: str = "meshtastic", port: int | None = 
             port=port,
             source="cli-import",
         )
-    console.print_json(data={"count": len(found), "transport": "tcp-only", "source": path})
+    console.print_json(data={"count": len(found), "transport": "tcp", "source": path})
 
 
 @app.command("providers-test")
@@ -87,7 +87,7 @@ def providers_test(provider: str = "meshtastic", tcp: str = "127.0.0.1", port: i
             "health": p.health().model_dump(),
             "operation_matrix": p.operation_matrix().model_dump(),
             "reachable": bool(endpoints),
-            "transport": "tcp-only",
+            "transport": "tcp",
         }
     )
 

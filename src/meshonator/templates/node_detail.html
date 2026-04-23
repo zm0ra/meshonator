@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
 <section class="grid two">
   <article class="card">
     <h2>Identity</h2>
@@ -26,6 +28,49 @@
       {% endif %}
     </script>
   </article>
+</section>
+<section class="card">
+  <h2>Configure Node</h2>
+  <form method="post" action="/ui/nodes/{{ node.id }}/configure" class="grid two">
+    <label>Short name
+      <input type="text" name="short_name" value="{{ node.short_name or '' }}" />
+    </label>
+    <label>Long name
+      <input type="text" name="long_name" value="{{ node.long_name or '' }}" />
+    </label>
+    <label>Role
+      <input type="text" name="role" value="{{ node.role or '' }}" />
+    </label>
+    <label>Favorite
+      <select name="favorite_state">
+        <option value="keep">Keep current</option>
+        <option value="true">Set favorite</option>
+        <option value="false">Unset favorite</option>
+      </select>
+    </label>
+    <label>Latitude
+      <input type="text" name="latitude" value="{{ node.latitude or '' }}" />
+    </label>
+    <label>Longitude
+      <input type="text" name="longitude" value="{{ node.longitude or '' }}" />
+    </label>
+    <label>Altitude
+      <input type="text" name="altitude" value="{{ node.altitude or '' }}" />
+    </label>
+    <label>Dry run
+      <input type="checkbox" name="dry_run" value="true" />
+    </label>
+    <label>Local config patch (JSON object)
+      <textarea name="local_config_patch_json" rows="6" placeholder='{"position":{"positionBroadcastSecs":300}}'></textarea>
+    </label>
+    <label>Module config patch (JSON object)
+      <textarea name="module_config_patch_json" rows="6" placeholder='{"mqtt":{"enabled":false}}'></textarea>
+    </label>
+    <label>Channels patch (JSON array)
+      <textarea name="channels_patch_json" rows="6" placeholder='[{"index":0,"settings":{"name":"mesh"}}]'></textarea>
+    </label>
+    <div><button type="submit">Apply Node Changes</button></div>
+  </form>
 </section>
 <section class="card">
   <h2>Raw Provider Payload (Developer)</h2>

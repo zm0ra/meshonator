@@ -55,6 +55,7 @@ class SyncService:
                 result = self.sync_endpoint(str(endpoint.id), quick=quick)
                 out.append({"status": "success", **result})
             except Exception as exc:
+                self.db.rollback()
                 out.append({"status": "failed", "endpoint": endpoint.endpoint, "error": str(exc)})
 
         self.inventory.stale_mark(stale_minutes=30)

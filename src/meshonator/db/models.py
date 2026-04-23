@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    BigInteger,
     Integer,
     String,
     Text,
@@ -58,7 +59,7 @@ class ManagedNodeModel(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID_COL, primary_key=True, default=uuid.uuid4)
     provider: Mapped[str] = mapped_column(String(64), index=True)
     provider_node_id: Mapped[str] = mapped_column(String(128), index=True)
-    node_num: Mapped[int | None] = mapped_column(Integer, index=True)
+    node_num: Mapped[int | None] = mapped_column(BigInteger, index=True)
     short_name: Mapped[str | None] = mapped_column(String(64), index=True)
     long_name: Mapped[str | None] = mapped_column(String(128))
     firmware_version: Mapped[str | None] = mapped_column(String(128), index=True)

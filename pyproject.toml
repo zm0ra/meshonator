@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "meshonator"
 version = "0.1.0"
-description = "TCP-only self-hosted Meshtastic fleet manager"
+description = "Web fleet manager for Meshtastic"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

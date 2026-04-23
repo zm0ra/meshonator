@@ -1,9 +1,92 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card">
-  <h1>Groups</h1>
-  <table><tr><th>Name</th><th>Description</th><th>Dynamic Filter</th><th>Desired Template</th></tr>
-  {% for g in groups %}<tr><td>{{ g.name }}</td><td>{{ g.description }}</td><td><pre>{{ g.dynamic_filter }}</pre></td><td><pre>{{ g.desired_config_template }}</pre></td></tr>{% endfor %}
-  </table>
+{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
+
+<section class="grid two">
+  <article class="card">
+    <h1>Create Group</h1>
+    <form method="post" action="/ui/groups/create" class="stack">
+      <label>Name
+        <input type="text" name="name" required placeholder="west-mesh" />
+      </label>
+      <label>Description
+        <input type="text" name="description" placeholder="Routers in west area" />
+      </label>
+      <label>Dynamic filter (JSON object)
+        <textarea name="dynamic_filter_json" rows="5" placeholder='{"provider":"meshtastic","reachable":true}'></textarea>
+      </label>
+      <label>Desired template (JSON object)
+        <textarea name="desired_template_json" rows="6" placeholder='{"short_name":"Node","favorite":true}'></textarea>
+      </label>
+      <button type="submit">Create Group</button>
+    </form>
+  </article>
+  <article class="card">
+    <h2>Node Assignment</h2>
+    <p class="muted">Assign any discovered node into a manual group.</p>
+    <table>
+      <tr><th>Provider</th><th>Node</th><th>Name</th></tr>
+      {% for n in nodes %}
+      <tr>
+        <td>{{ n.provider }}</td>
+        <td><a href="/nodes/{{ n.id }}">{{ n.provider_node_id }}</a></td>
+        <td>{{ n.short_name }} / {{ n.long_name }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </article>
 </section>
+
+{% for entry in groups_view %}
+<section class="grid two">
+  <article class="card">
+    <h2>{{ entry.group.name }}</h2>
+    <p>{{ entry.group.description }}</p>
+    <form method="post" action="/ui/groups/{{ entry.group.id }}/configure" class="stack">
+      <label>Description
+        <input type="text" name="description" value="{{ entry.group.description or '' }}" />
+      </label>
+      <label>Dynamic filter (JSON object)
+        <textarea name="dynamic_filter_json" rows="5">{{ entry.group.dynamic_filter | tojson(indent=2) }}</textarea>
+      </label>
+      <label>Desired template (JSON object)
+        <textarea name="desired_template_json" rows="6">{{ entry.group.desired_config_template | tojson(indent=2) }}</textarea>
+      </label>
+      <button type="submit">Save Group Config</button>
+    </form>
+    <form method="post" action="/ui/groups/{{ entry.group.id }}/apply-template" class="stack mt-1">
+      <label><input type="checkbox" name="dry_run" value="true" checked /> Dry run</label>
+      <button type="submit">Queue Template Apply</button>
+    </form>
+  </article>
+  <article class="card">
+    <h3>Assign Node</h3>
+    <form method="post" action="/ui/groups/{{ entry.group.id }}/assign-node" class="stack">
+      <label>Node
+        <select name="node_id">
+          {% for n in nodes %}
+          <option value="{{ n.id }}">{{ n.provider }} :: {{ n.provider_node_id }} :: {{ n.short_name or n.long_name or "unnamed" }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Assign To Group</button>
+    </form>
+    <h3>Assigned Members</h3>
+    <ul>
+      {% for member in entry.assigned %}
+      <li><a href="/nodes/{{ member.id }}">{{ member.provider }} / {{ member.provider_node_id }}</a></li>
+      {% endfor %}
+      {% if not entry.assigned %}<li class="muted">No assigned members.</li>{% endif %}
+    </ul>
+    <h3>Resolved Members (assigned + dynamic)</h3>
+    <ul>
+      {% for member in entry.resolved %}
+      <li><a href="/nodes/{{ member.id }}">{{ member.provider }} / {{ member.provider_node_id }}</a></li>
+      {% endfor %}
+      {% if not entry.resolved %}<li class="muted">No resolved members.</li>{% endif %}
+    </ul>
+  </article>
+</section>
+{% endfor %}
 {% endblock %}

@@ -24,6 +24,7 @@ class DiscoveryService:
         manual_endpoints: Iterable[str] = (),
         port: int | None = None,
         source: str = "manual",
+        progress_cb=None,
     ) -> list[ProviderEndpointModel]:
         provider = self.registry.get(provider_name)
         targets = expand_targets(hosts, cidrs)
@@ -34,7 +35,12 @@ class DiscoveryService:
                 host = without_prefix.split(":")[0]
                 targets.append(host)
 
-        discovered = provider.discover_endpoints(sorted(set(targets)), port=port)
+        unique_targets = sorted(set(targets))
+        try:
+            discovered = provider.discover_endpoints(unique_targets, port=port, progress_cb=progress_cb)
+        except TypeError:
+            # Backward compatibility for fake providers in tests that still expose legacy signature.
+            discovered = provider.discover_endpoints(unique_targets, port=port)
 
         saved: list[ProviderEndpointModel] = []
         for found in discovered:

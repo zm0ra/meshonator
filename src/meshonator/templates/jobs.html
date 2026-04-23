@@ -1,9 +1,56 @@
 {% extends "base.html" %}
 {% block content %}
+{% if auto_refresh %}
+<meta http-equiv="refresh" content="3">
+{% endif %}
 <section class="card">
   <h1>Jobs</h1>
-  <table><tr><th>ID</th><th>Type</th><th>Status</th><th>By</th><th>Source</th><th>Created</th><th>Started</th><th>Finished</th></tr>
-  {% for j in jobs %}<tr><td>{{ j.id }}</td><td>{{ j.job_type }}</td><td>{{ j.status }}</td><td>{{ j.requested_by }}</td><td>{{ j.source }}</td><td>{{ j.created_at }}</td><td>{{ j.started_at }}</td><td>{{ j.finished_at }}</td></tr>{% endfor %}
+  {% if auto_refresh %}<p class="muted">Live refresh enabled (3s) while jobs are pending/running.</p>{% endif %}
+  <table>
+    <tr>
+      <th>ID</th>
+      <th>Type</th>
+      <th>Status</th>
+      <th>By</th>
+      <th>Source</th>
+      <th>Created</th>
+      <th>Started</th>
+      <th>Finished</th>
+      <th>Recent Logs</th>
+    </tr>
+    {% for j in jobs %}
+    <tr>
+      <td>{{ j.id }}</td>
+      <td>{{ j.job_type }}</td>
+      <td>{{ j.status }}</td>
+      <td>{{ j.requested_by }}</td>
+      <td>{{ j.source }}</td>
+      <td>{{ j.created_at }}</td>
+      <td>{{ j.started_at }}</td>
+      <td>{{ j.finished_at }}</td>
+      <td>
+        {% set logs = results_by_job.get(j.id|string, []) %}
+        {% if logs %}
+        <details>
+          <summary>{{ logs|length }} entries</summary>
+          <table>
+            <tr><th>Time</th><th>Status</th><th>Message</th><th>Details</th></tr>
+            {% for r in logs %}
+            <tr>
+              <td>{{ r.created_at }}</td>
+              <td>{{ r.status }}</td>
+              <td>{{ r.message }}</td>
+              <td><pre>{{ r.details }}</pre></td>
+            </tr>
+            {% endfor %}
+          </table>
+        </details>
+        {% else %}
+        <span class="muted">No logs yet</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
   </table>
 </section>
 {% endblock %}

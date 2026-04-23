@@ -45,6 +45,26 @@ def _run_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
         jobs.start(job_id)
         payload = job.payload or {}
         try:
+            found_count = 0
+
+            def _progress(scanned: int, total: int, host: str, is_open: bool) -> None:
+                nonlocal found_count
+                if is_open:
+                    found_count += 1
+                jobs.add_result(
+                    job_id=job_id,
+                    status="running",
+                    node_id=None,
+                    message=f"Discovery progress {scanned}/{total}",
+                    details={
+                        "scanned": scanned,
+                        "total": total,
+                        "host": host,
+                        "reachable": is_open,
+                        "found_so_far": found_count,
+                    },
+                )
+
             found = DiscoveryService(db, registry).scan(
                 provider_name=payload.get("provider", "meshtastic"),
                 hosts=payload.get("hosts", []),
@@ -52,6 +72,7 @@ def _run_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
                 manual_endpoints=payload.get("manual_endpoints", []),
                 port=payload.get("port"),
                 source=payload.get("source", "ui"),
+                progress_cb=_progress,
             )
             jobs.add_result(
                 job_id=job_id,

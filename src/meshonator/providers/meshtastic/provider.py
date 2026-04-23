@@ -60,13 +60,24 @@ class MeshtasticProvider(Provider):
             batch_write=ProviderOperationSupport.NATIVE,
         )
 
-    def discover_endpoints(self, hosts: list[str], port: int | None = None) -> list[ProviderConnection]:
+    def discover_endpoints(
+        self,
+        hosts: list[str],
+        port: int | None = None,
+        *,
+        progress_cb=None,
+    ) -> list[ProviderConnection]:
         tcp_port = port or self.settings.meshtastic_default_tcp_port
-        return [
-            ProviderConnection(endpoint=f"tcp://{host}:{tcp_port}", host=host, port=tcp_port)
-            for host in hosts
-            if tcp_is_open(host, tcp_port, timeout=self.settings.discovery_connect_timeout_s)
-        ]
+        discovered: list[ProviderConnection] = []
+        total = len(hosts)
+        for index, host in enumerate(hosts, start=1):
+            is_open = tcp_is_open(host, tcp_port, timeout=self.settings.discovery_connect_timeout_s)
+            if progress_cb is not None:
+                progress_cb(index, total, host, is_open)
+            if not is_open:
+                continue
+            discovered.append(ProviderConnection(endpoint=f"tcp://{host}:{tcp_port}", host=host, port=tcp_port))
+        return discovered
 
     def health(self) -> ProviderHealth:
         ready = TCPInterface is not None

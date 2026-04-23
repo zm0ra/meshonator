@@ -44,3 +44,6 @@ class JobsService:
 
     def list_jobs(self, limit: int = 100) -> list[JobModel]:
         return list(self.db.scalars(select(JobModel).order_by(JobModel.created_at.desc()).limit(limit)).all())
+
+    def list_results(self, limit: int = 500) -> list[JobResultModel]:
+        return list(self.db.scalars(select(JobResultModel).order_by(JobResultModel.created_at.desc()).limit(limit)).all())

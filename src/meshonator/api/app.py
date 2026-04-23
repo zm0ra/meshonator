@@ -18,7 +18,7 @@ from meshonator.audit.service import AuditService
 from meshonator.auth.security import CurrentUser, authenticate_user, bootstrap_admin, require_role, require_session_user
 from meshonator.config.settings import get_settings
 from meshonator.db.base import Base
-from meshonator.db.models import AuditLogModel, JobModel, ManagedNodeModel, NodeGroupModel, ProviderEndpointModel
+from meshonator.db.models import AuditLogModel, JobModel, JobResultModel, ManagedNodeModel, NodeGroupModel, ProviderEndpointModel
 from meshonator.db.session import engine, get_db
 from meshonator.discovery.service import DiscoveryService
 from meshonator.domain.models import ConfigPatch
@@ -150,6 +150,17 @@ def dashboard(
         db.execute(select(ManagedNodeModel.provider, func.count()).group_by(ManagedNodeModel.provider)).all()
     )
     recent_changes = list(db.scalars(select(AuditLogModel).order_by(AuditLogModel.created_at.desc()).limit(10)).all())
+    latest_discovery_job = db.scalar(
+        select(JobModel).where(JobModel.job_type == "discovery_scan").order_by(JobModel.created_at.desc()).limit(1)
+    )
+    latest_discovery_progress = None
+    if latest_discovery_job is not None:
+        latest_discovery_progress = db.scalar(
+            select(JobResultModel)
+            .where(JobResultModel.job_id == latest_discovery_job.id)
+            .order_by(JobResultModel.created_at.desc())
+            .limit(1)
+        )
     providers = [provider.name for provider in registry.all()]
     ui_message = request.query_params.get("message")
     ui_error = request.query_params.get("error")
@@ -165,6 +176,8 @@ def dashboard(
             "failed_jobs": failed_jobs,
             "provider_summary": provider_summary,
             "recent_changes": recent_changes,
+            "latest_discovery_job": latest_discovery_job,
+            "latest_discovery_progress": latest_discovery_progress,
             "providers": providers,
             "ui_message": ui_message,
             "ui_error": ui_error,
@@ -494,8 +507,26 @@ def jobs_page(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_session_user),
 ) -> HTMLResponse:
-    jobs = JobsService(db).list_jobs()
-    return templates.TemplateResponse(request, "jobs.html", {"user": user, "jobs": jobs})
+    jobs_service = JobsService(db)
+    jobs = jobs_service.list_jobs()
+    results = jobs_service.list_results(limit=600)
+    results_by_job: dict[str, list] = {}
+    for row in results:
+        key = str(row.job_id)
+        bucket = results_by_job.setdefault(key, [])
+        if len(bucket) < 30:
+            bucket.append(row)
+    auto_refresh = any(job.status in {"pending", "running"} for job in jobs)
+    return templates.TemplateResponse(
+        request,
+        "jobs.html",
+        {
+            "user": user,
+            "jobs": jobs,
+            "results_by_job": results_by_job,
+            "auto_refresh": auto_refresh,
+        },
+    )
 
 
 @app.get("/audit", response_class=HTMLResponse)

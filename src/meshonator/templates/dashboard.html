@@ -44,6 +44,21 @@
     <p class="muted">After sync, open <a href="/nodes">Nodes</a> to verify inventory.</p>
   </article>
 </section>
+<section class="card">
+  <h2>Discovery Progress</h2>
+  {% if latest_discovery_job %}
+  <p><b>Last discovery job:</b> {{ latest_discovery_job.id }} ({{ latest_discovery_job.status }})</p>
+  {% if latest_discovery_progress %}
+  <p><b>Latest log:</b> {{ latest_discovery_progress.message }}</p>
+  <pre>{{ latest_discovery_progress.details }}</pre>
+  {% else %}
+  <p class="muted">No log entries yet.</p>
+  {% endif %}
+  <p><a href="/jobs">Open Jobs</a></p>
+  {% else %}
+  <p class="muted">No discovery jobs yet.</p>
+  {% endif %}
+</section>
 <section class="grid two">
   <article class="card">
     <h2>Provider Summary</h2>

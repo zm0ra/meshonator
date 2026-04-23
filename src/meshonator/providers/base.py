@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from meshonator.domain.models import ConfigPatch, ManagedNode, NodeCapability, OperationMatrix, ProviderHealth
 
@@ -31,7 +31,13 @@ class Provider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def discover_endpoints(self, hosts: list[str], port: int | None = None) -> list[ProviderConnection]:
+    def discover_endpoints(
+        self,
+        hosts: list[str],
+        port: int | None = None,
+        *,
+        progress_cb: Callable[[int, int, str, bool], None] | None = None,
+    ) -> list[ProviderConnection]:
         raise NotImplementedError
 
     @abstractmethod

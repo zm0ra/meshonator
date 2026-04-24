@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -52,6 +52,16 @@ templates.env.globals.update(
     build_version=settings.build_version,
     build_date=settings.build_date,
 )
+
+
+@app.exception_handler(HTTPException)
+def http_exception_handler(request: Request, exc: HTTPException):
+    accepts = request.headers.get("accept", "")
+    wants_html = "text/html" in accepts or "*/*" in accepts
+    is_ui_path = not request.url.path.startswith("/api/")
+    if exc.status_code == 401 and wants_html and is_ui_path and request.url.path != "/login":
+        return RedirectResponse(url="/login", status_code=303)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 def _parse_multi_value(raw: str) -> list[str]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from meshonator.db.models import JobModel, JobResultModel
@@ -48,11 +48,30 @@ class JobsService:
     def list_results(self, limit: int = 500) -> list[JobResultModel]:
         return list(self.db.scalars(select(JobResultModel).order_by(JobResultModel.created_at.desc()).limit(limit)).all())
 
-    def recover_stale_running_jobs(self, stale_after_minutes: int | None = 15) -> int:
+    def claim_next_pending(self) -> JobModel | None:
+        candidate_ids = list(
+            self.db.scalars(
+                select(JobModel.id).where(JobModel.status == "pending").order_by(JobModel.created_at.asc()).limit(20)
+            ).all()
+        )
+        for candidate_id in candidate_ids:
+            now = datetime.now(timezone.utc)
+            result = self.db.execute(
+                update(JobModel)
+                .where(JobModel.id == candidate_id, JobModel.status == "pending")
+                .values(status="running", started_at=now)
+            )
+            self.db.commit()
+            if result.rowcount == 1:
+                return self.db.get(JobModel, candidate_id)
+        return None
+
+    def recover_stale_running_jobs(self, stale_after_minutes: int | None = 15, include_pending: bool = True) -> int:
         now = datetime.now(timezone.utc)
         cutoff = None if stale_after_minutes is None else now.timestamp() - (stale_after_minutes * 60)
         recovered = 0
-        rows = list(self.db.scalars(select(JobModel).where(JobModel.status.in_(["pending", "running"]))).all())
+        statuses = ["running", "pending"] if include_pending else ["running"]
+        rows = list(self.db.scalars(select(JobModel).where(JobModel.status.in_(statuses))).all())
         for job in rows:
             if cutoff is not None:
                 anchor = job.started_at or job.created_at

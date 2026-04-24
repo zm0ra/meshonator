@@ -110,7 +110,7 @@ def startup() -> None:
             password=settings.bootstrap_admin_password,
             role=settings.bootstrap_admin_role,
         )
-        JobsService(db).recover_stale_running_jobs(stale_after_minutes=None)
+        JobsService(db).recover_stale_running_jobs(stale_after_minutes=None, include_pending=False)
 
 
 @app.get("/health")
@@ -189,6 +189,7 @@ def dashboard(
         "dashboard.html",
         {
             "user": user,
+            "job_executor_mode": settings.job_executor_mode,
             "total_nodes": total_nodes,
             "online_nodes": online_nodes,
             "stale_nodes": stale_nodes,

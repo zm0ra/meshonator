@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+pysqlite:///./meshonator.db"
     scheduler_enabled: bool = True
     scheduler_sync_cron: str = "*/5 * * * *"
+    job_executor_mode: Literal["local", "external"] = "local"
 
     default_provider: str = "meshtastic"
     meshtastic_default_tcp_port: int = 4403

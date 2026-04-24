@@ -17,6 +17,7 @@ from meshonator.db.models import ManagedNodeModel
 from meshonator.db.session import engine
 from meshonator.discovery.service import DiscoveryService
 from meshonator.inventory.service import InventoryService
+from meshonator.jobs.worker import run_worker_loop
 from meshonator.sync.service import SyncService
 
 app = typer.Typer(help="Meshonator CLI")
@@ -195,6 +196,16 @@ def providers_capabilities() -> None:
             for p in registry.all()
         }
     )
+
+
+@app.command("jobs-worker")
+def jobs_worker(
+    poll_interval: Annotated[float, typer.Option("--poll-interval", min=0.2)] = 2.0,
+    once: Annotated[bool, typer.Option("--once")] = False,
+) -> None:
+    processed = run_worker_loop(registry=registry, poll_interval_s=poll_interval, once=once)
+    if once:
+        console.print_json(data={"processed": processed})
 
 
 if __name__ == "__main__":

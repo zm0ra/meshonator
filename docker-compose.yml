@@ -30,6 +30,7 @@ services:
       DATABASE_URL: postgresql+psycopg://meshonator:meshonator@db:5432/meshonator
       APP_ENV: prod
       SCHEDULER_ENABLED: "true"
+      JOB_EXECUTOR_MODE: external
     ports:
       - "${MESHONATOR_HTTP_PORT:-8080}:8080"
     volumes:

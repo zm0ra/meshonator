@@ -88,6 +88,15 @@ MESHONATOR_HTTP_PORT=8081 docker compose up --build -d
 
 UI: `http://localhost:8081`
 
+Docker runs the web app in `external` job executor mode. Start the host worker once so UI jobs can scan/sync through host networking:
+
+```bash
+DATABASE_URL=postgresql+psycopg://meshonator:meshonator@localhost:5432/meshonator \
+  .venv/bin/meshonator jobs-worker --poll-interval 2.0
+```
+
+Leave this process running while using discovery/sync in the UI.
+
 ## UI-first workflow
 
 Dashboard is the primary workflow:
@@ -152,6 +161,7 @@ meshonator bootstrap
 meshonator providers-test --provider meshtastic --tcp 10.10.0.20
 meshonator providers-capabilities
 meshonator nodes-export --format yaml
+meshonator jobs-worker --poll-interval 2.0
 meshonator jobs-run-sync-group core-west
 meshonator db-seed-demo
 ```

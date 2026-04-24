@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from meshonator.audit.service import AuditService
+from meshonator.config.settings import get_settings
 from meshonator.db.models import JobModel
 from meshonator.db.session import SessionLocal
 from meshonator.discovery.service import DiscoveryService
@@ -16,22 +17,55 @@ from meshonator.providers.registry import ProviderRegistry
 from meshonator.sync.service import SyncService
 
 executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="meshonator-jobs")
+settings = get_settings()
 
 
 def enqueue_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
-    executor.submit(_run_discovery_job, job_id, registry)
+    if settings.job_executor_mode == "local":
+        executor.submit(_run_discovery_job, job_id, registry)
 
 
 def enqueue_sync_job(job_id: UUID, registry: ProviderRegistry) -> None:
-    executor.submit(_run_sync_job, job_id, registry)
+    if settings.job_executor_mode == "local":
+        executor.submit(_run_sync_job, job_id, registry)
 
 
 def enqueue_group_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
-    executor.submit(_run_group_patch_job, job_id, registry)
+    if settings.job_executor_mode == "local":
+        executor.submit(_run_group_patch_job, job_id, registry)
 
 
 def enqueue_node_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
-    executor.submit(_run_node_patch_job, job_id, registry)
+    if settings.job_executor_mode == "local":
+        executor.submit(_run_node_patch_job, job_id, registry)
+
+
+def run_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    with SessionLocal() as db:
+        job = db.get(JobModel, job_id)
+        if job is None:
+            return
+        job_type = job.job_type
+
+    if job_type == "discovery_scan":
+        _run_discovery_job(job_id, registry)
+    elif job_type == "sync_all":
+        _run_sync_job(job_id, registry)
+    elif job_type == "group_apply_template":
+        _run_group_patch_job(job_id, registry)
+    elif job_type == "node_config_patch":
+        _run_node_patch_job(job_id, registry)
+    else:
+        with SessionLocal() as db:
+            jobs = JobsService(db)
+            jobs.add_result(
+                job_id=job_id,
+                status="failed",
+                node_id=None,
+                message=f"Unsupported job type: {job_type}",
+                details={},
+            )
+            jobs.finish(job_id, success=False)
 
 
 def _run_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:

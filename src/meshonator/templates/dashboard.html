@@ -2,6 +2,12 @@
 {% block content %}
 {% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
 {% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
+{% if job_executor_mode == "external" %}
+<section class="card">
+  <p class="warn"><b>External executor mode is enabled.</b> Jobs are queued by the UI and must be executed by the host worker process.</p>
+  <p class="muted">Start worker on host: <code>DATABASE_URL=postgresql+psycopg://meshonator:meshonator@localhost:5432/meshonator .venv/bin/meshonator jobs-worker</code></p>
+</section>
+{% endif %}
 <section class="grid stats">
   <article class="card"><h3>Known Nodes</h3><div class="value">{{ total_nodes }}</div></article>
   <article class="card"><h3>Online</h3><div class="value success">{{ online_nodes }}</div></article>

@@ -6,6 +6,14 @@
 <section class="card">
   <p class="warn"><b>External executor mode is enabled.</b> Jobs are queued by the UI and must be executed by the host worker process.</p>
   <p class="muted">Start worker on host: <code>DATABASE_URL=postgresql+psycopg://meshonator:meshonator@localhost:5432/meshonator .venv/bin/meshonator jobs-worker</code></p>
+  {% if worker %}
+  <p><b>Worker status:</b> {% if worker_online %}<span class="success">online</span>{% else %}<span class="danger">offline/stale</span>{% endif %}</p>
+  <p class="muted">worker_id={{ worker.worker_id }}, host={{ worker.host }}, pid={{ worker.pid }}, processed={{ worker.processed_jobs }}, last heartbeat={{ worker.last_heartbeat_at }}</p>
+  {% if worker.last_claimed_job_id %}<p class="muted">last claimed job: {{ worker.last_claimed_job_id }}</p>{% endif %}
+  {% if worker.last_completed_job_id %}<p class="muted">last completed job: {{ worker.last_completed_job_id }}</p>{% endif %}
+  {% else %}
+  <p class="danger">No worker heartbeat yet.</p>
+  {% endif %}
 </section>
 {% endif %}
 <section class="grid stats">
@@ -56,7 +64,7 @@
   <p><b>Last discovery job:</b> {{ latest_discovery_job.id }} ({{ latest_discovery_job.status }})</p>
   {% if latest_discovery_progress %}
   <p><b>Latest log:</b> {{ latest_discovery_progress.message }}</p>
-  <pre>{{ latest_discovery_progress.details }}</pre>
+  <pre>{{ latest_discovery_progress.details | tojson(indent=2) }}</pre>
   {% else %}
   <p class="muted">No log entries yet.</p>
   {% endif %}

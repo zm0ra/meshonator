@@ -21,7 +21,7 @@ from meshonator.domain.models import (
 from meshonator.providers.base import Provider, ProviderConnection, ProviderError
 from meshonator.providers.meshtastic.cli_fallback import MeshtasticCliFallback
 from meshonator.providers.utils.json_safe import to_json_safe
-from meshonator.providers.utils.tcp_scan import tcp_is_open
+from meshonator.providers.utils.tcp_scan import tcp_probe
 
 try:
     from meshtastic.tcp_interface import TCPInterface
@@ -71,9 +71,13 @@ class MeshtasticProvider(Provider):
         discovered: list[ProviderConnection] = []
         total = len(hosts)
         for index, host in enumerate(hosts, start=1):
-            is_open = tcp_is_open(host, tcp_port, timeout=self.settings.discovery_connect_timeout_s)
+            probe = tcp_probe(host, tcp_port, timeout=self.settings.discovery_connect_timeout_s)
+            is_open = probe["is_open"]
             if progress_cb is not None:
-                progress_cb(index, total, host, is_open)
+                try:
+                    progress_cb(index, total, host, is_open, probe)
+                except TypeError:
+                    progress_cb(index, total, host, is_open)
             if not is_open:
                 continue
             discovered.append(ProviderConnection(endpoint=f"tcp://{host}:{tcp_port}", host=host, port=tcp_port))

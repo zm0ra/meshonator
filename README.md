@@ -96,6 +96,7 @@ DATABASE_URL=postgresql+psycopg://meshonator:meshonator@localhost:5432/meshonato
 ```
 
 Leave this process running while using discovery/sync in the UI.
+Dashboard displays worker heartbeat (online/offline, host, pid, last heartbeat, last claimed/completed job).
 
 ## UI-first workflow
 
@@ -104,6 +105,7 @@ Dashboard is the primary workflow:
 1. Open **Discovery** and submit hosts/CIDR/endpoints.
 2. A discovery job is queued immediately.
 3. Open **Jobs** to track progress/results.
+  Jobs include detailed discovery trace logs (scan start parameters, per-host probe result, and final summary).
 4. Run **Sync** from Dashboard (also queued).
 5. Verify in **Nodes** and **Map**.
 

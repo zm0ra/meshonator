@@ -40,7 +40,7 @@
               <td>{{ r.created_at }}</td>
               <td>{{ r.status }}</td>
               <td>{{ r.message }}</td>
-              <td><pre>{{ r.details }}</pre></td>
+              <td><pre>{{ r.details | tojson(indent=2) }}</pre></td>
             </tr>
             {% endfor %}
           </table>

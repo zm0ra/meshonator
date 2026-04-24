@@ -19,7 +19,14 @@ from meshonator.audit.service import AuditService
 from meshonator.auth.security import CurrentUser, authenticate_user, bootstrap_admin, require_role, require_session_user
 from meshonator.config.settings import get_settings
 from meshonator.db.base import Base
-from meshonator.db.models import AuditLogModel, JobModel, JobResultModel, ManagedNodeModel, NodeGroupModel, ProviderEndpointModel
+from meshonator.db.models import (
+    AuditLogModel,
+    JobModel,
+    JobResultModel,
+    ManagedNodeModel,
+    NodeGroupModel,
+    ProviderEndpointModel,
+)
 from meshonator.db.session import engine, get_db
 from meshonator.discovery.service import DiscoveryService
 from meshonator.domain.models import ConfigPatch
@@ -182,6 +189,13 @@ def dashboard(
             .limit(1)
         )
     providers = [provider.name for provider in registry.all()]
+    worker = JobsService(db).get_latest_worker_heartbeat() if settings.job_executor_mode == "external" else None
+    worker_online = False
+    if worker is not None and worker.last_heartbeat_at is not None:
+        heartbeat = worker.last_heartbeat_at
+        if heartbeat.tzinfo is None:
+            heartbeat = heartbeat.replace(tzinfo=timezone.utc)
+        worker_online = (datetime.now(timezone.utc) - heartbeat).total_seconds() <= 20
     ui_message = request.query_params.get("message")
     ui_error = request.query_params.get("error")
     return templates.TemplateResponse(
@@ -200,6 +214,8 @@ def dashboard(
             "latest_discovery_job": latest_discovery_job,
             "latest_discovery_progress": latest_discovery_progress,
             "providers": providers,
+            "worker": worker,
+            "worker_online": worker_online,
             "ui_message": ui_message,
             "ui_error": ui_error,
         },

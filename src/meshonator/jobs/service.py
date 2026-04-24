@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from meshonator.db.models import JobModel, JobResultModel
+from meshonator.db.models import JobModel, JobResultModel, WorkerHeartbeatModel
 
 
 class JobsService:
@@ -48,7 +48,58 @@ class JobsService:
     def list_results(self, limit: int = 500) -> list[JobResultModel]:
         return list(self.db.scalars(select(JobResultModel).order_by(JobResultModel.created_at.desc()).limit(limit)).all())
 
-    def claim_next_pending(self) -> JobModel | None:
+    def touch_worker_heartbeat(
+        self,
+        worker_id: str,
+        mode: str,
+        host: str,
+        pid: int,
+        status: str = "running",
+        last_claimed_job_id: UUID | None = None,
+        last_completed_job_id: UUID | None = None,
+        processed_jobs: int | None = None,
+        details: dict | None = None,
+    ) -> WorkerHeartbeatModel:
+        now = datetime.now(timezone.utc)
+        row = self.db.get(WorkerHeartbeatModel, worker_id)
+        if row is None:
+            row = WorkerHeartbeatModel(
+                worker_id=worker_id,
+                mode=mode,
+                host=host,
+                pid=pid,
+                status=status,
+                started_at=now,
+                last_heartbeat_at=now,
+                last_claimed_job_id=last_claimed_job_id,
+                last_completed_job_id=last_completed_job_id,
+                processed_jobs=processed_jobs or 0,
+                details=details or {},
+            )
+            self.db.add(row)
+        else:
+            row.mode = mode
+            row.host = host
+            row.pid = pid
+            row.status = status
+            row.last_heartbeat_at = now
+            if last_claimed_job_id is not None:
+                row.last_claimed_job_id = last_claimed_job_id
+            if last_completed_job_id is not None:
+                row.last_completed_job_id = last_completed_job_id
+            if processed_jobs is not None:
+                row.processed_jobs = processed_jobs
+            if details is not None:
+                row.details = details
+        self.db.commit()
+        return row
+
+    def get_latest_worker_heartbeat(self) -> WorkerHeartbeatModel | None:
+        return self.db.scalar(
+            select(WorkerHeartbeatModel).order_by(WorkerHeartbeatModel.last_heartbeat_at.desc()).limit(1)
+        )
+
+    def claim_next_pending_id(self) -> UUID | None:
         candidate_ids = list(
             self.db.scalars(
                 select(JobModel.id).where(JobModel.status == "pending").order_by(JobModel.created_at.asc()).limit(20)
@@ -63,7 +114,7 @@ class JobsService:
             )
             self.db.commit()
             if result.rowcount == 1:
-                return self.db.get(JobModel, candidate_id)
+                return candidate_id
         return None
 
     def recover_stale_running_jobs(self, stale_after_minutes: int | None = 15, include_pending: bool = True) -> int:

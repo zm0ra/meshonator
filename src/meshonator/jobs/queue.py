@@ -6,7 +6,9 @@ from uuid import UUID
 
 from meshonator.audit.service import AuditService
 from meshonator.config.settings import get_settings
-from meshonator.db.models import JobModel
+from sqlalchemy import select
+
+from meshonator.db.models import JobModel, ProviderEndpointModel
 from meshonator.db.session import SessionLocal
 from meshonator.discovery.service import DiscoveryService
 from meshonator.domain.models import ConfigPatch
@@ -14,6 +16,7 @@ from meshonator.groups.service import GroupsService
 from meshonator.jobs.service import JobsService
 from meshonator.operations.service import OperationsService
 from meshonator.providers.registry import ProviderRegistry
+from meshonator.providers.utils.tcp_scan import expand_targets
 from meshonator.sync.service import SyncService
 
 executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="meshonator-jobs")
@@ -79,41 +82,93 @@ def _run_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
         jobs.start(job_id)
         payload = job.payload or {}
         try:
+            provider_name = payload.get("provider", "meshtastic")
+            hosts = payload.get("hosts", [])
+            cidrs = payload.get("cidrs", [])
+            manual_endpoints = payload.get("manual_endpoints", [])
+            port = payload.get("port")
+            expanded_targets = expand_targets(hosts, cidrs)
+            for endpoint in manual_endpoints:
+                if isinstance(endpoint, str) and endpoint.startswith("tcp://"):
+                    expanded_targets.append(endpoint.removeprefix("tcp://").split(":")[0])
+            unique_targets = sorted(set(expanded_targets))
+            jobs.add_result(
+                job_id=job_id,
+                status="running",
+                node_id=None,
+                message="Discovery started",
+                details={
+                    "provider": provider_name,
+                    "hosts": hosts,
+                    "cidrs": cidrs,
+                    "manual_endpoints": manual_endpoints,
+                    "port": port,
+                    "expanded_target_count": len(unique_targets),
+                    "expanded_targets_sample": unique_targets[:100],
+                    "source": payload.get("source", "ui"),
+                },
+            )
             found_count = 0
+            closed_count = 0
 
-            def _progress(scanned: int, total: int, host: str, is_open: bool) -> None:
-                nonlocal found_count
+            def _progress(scanned: int, total: int, host: str, is_open: bool, probe: dict | None = None) -> None:
+                nonlocal found_count, closed_count
                 if is_open:
                     found_count += 1
+                else:
+                    closed_count += 1
+                probe_details = probe or {}
+                if is_open:
+                    message = f"Probe {scanned}/{total}: {host} open"
+                else:
+                    reason = probe_details.get("reason") or "closed"
+                    message = f"Probe {scanned}/{total}: {host} closed ({reason})"
                 jobs.add_result(
                     job_id=job_id,
                     status="running",
                     node_id=None,
-                    message=f"Discovery progress {scanned}/{total}",
+                    message=message,
                     details={
                         "scanned": scanned,
                         "total": total,
                         "host": host,
                         "reachable": is_open,
                         "found_so_far": found_count,
+                        "closed_so_far": closed_count,
+                        "probe": probe_details,
                     },
                 )
 
+            existing_endpoints = set(
+                db.scalars(
+                    select(ProviderEndpointModel.endpoint).where(ProviderEndpointModel.provider_name == provider_name)
+                ).all()
+            )
             found = DiscoveryService(db, registry).scan(
-                provider_name=payload.get("provider", "meshtastic"),
-                hosts=payload.get("hosts", []),
-                cidrs=payload.get("cidrs", []),
-                manual_endpoints=payload.get("manual_endpoints", []),
-                port=payload.get("port"),
+                provider_name=provider_name,
+                hosts=hosts,
+                cidrs=cidrs,
+                manual_endpoints=manual_endpoints,
+                port=port,
                 source=payload.get("source", "ui"),
                 progress_cb=_progress,
             )
+            discovered_endpoints = [item.endpoint for item in found]
+            new_endpoints = sorted(set(discovered_endpoints) - existing_endpoints)
+            existing_reconfirmed = sorted(set(discovered_endpoints) & existing_endpoints)
             jobs.add_result(
                 job_id=job_id,
                 status="success",
                 node_id=None,
                 message=f"Discovery finished with {len(found)} endpoints",
-                details={"endpoints": [item.endpoint for item in found]},
+                details={
+                    "endpoints": discovered_endpoints,
+                    "new_endpoints": new_endpoints,
+                    "existing_reconfirmed": existing_reconfirmed,
+                    "targets_total": len(unique_targets),
+                    "open_hosts": found_count,
+                    "closed_hosts": closed_count,
+                },
             )
             sync_failed = []
             if payload.get("auto_sync", True):

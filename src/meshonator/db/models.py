@@ -186,6 +186,24 @@ class JobResultModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class WorkerHeartbeatModel(Base):
+    __tablename__ = "worker_heartbeats"
+
+    worker_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(32), default="external", index=True)
+    host: Mapped[str] = mapped_column(String(128), index=True)
+    pid: Mapped[int] = mapped_column(Integer, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="running", index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    last_claimed_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID_COL, ForeignKey("jobs.id", ondelete="SET NULL"))
+    last_completed_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID_COL, ForeignKey("jobs.id", ondelete="SET NULL")
+    )
+    processed_jobs: Mapped[int] = mapped_column(Integer, default=0)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class AuditLogModel(Base):
     __tablename__ = "audit_logs"
 

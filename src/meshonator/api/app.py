@@ -669,6 +669,68 @@ def _get_nested(src: dict[str, Any], path: list[str]) -> Any:
     return current
 
 
+ALIGNMENT_LOCAL_PATHS: list[list[str]] = [
+    ["lora", "hopLimit"],
+    ["device", "tzdef"],
+    ["network", "ntpServer"],
+    ["lora", "ignoreMqtt"],
+    ["lora", "spreadFactor"],
+    ["network", "enabledProtocols"],
+    ["position", "broadcastSmartMinimumIntervalSecs"],
+    ["device", "rebroadcastMode"],
+    ["device", "role"],
+    ["lora", "bandwidth"],
+    ["lora", "codingRate"],
+    ["position", "gpsMode"],
+    ["position", "gpsUpdateInterval"],
+    ["position", "positionBroadcastSecs"],
+]
+
+ALIGNMENT_MODULE_OMIT_PATHS: list[list[str]] = [
+    ["ambientLighting", "blue"],
+    ["ambientLighting", "green"],
+]
+
+
+def _remove_nested_key(dst: dict[str, Any], path: list[str]) -> None:
+    if not path:
+        return
+    cursor: Any = dst
+    for segment in path[:-1]:
+        if not isinstance(cursor, dict):
+            return
+        next_cursor = cursor.get(segment)
+        if not isinstance(next_cursor, dict):
+            return
+        cursor = next_cursor
+    if isinstance(cursor, dict):
+        cursor.pop(path[-1], None)
+
+
+def _build_alignment_local_patch(raw_metadata: dict[str, Any]) -> dict[str, Any]:
+    prefs = raw_metadata.get("preferences", {})
+    if not isinstance(prefs, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for path in ALIGNMENT_LOCAL_PATHS:
+        value = _get_nested(prefs, path)
+        if value is not None:
+            _set_nested(out, path, value)
+    _remove_nested_key(out, ["security", "privateKey"])
+    _remove_nested_key(out, ["security", "publicKey"])
+    return out
+
+
+def _build_alignment_module_patch(raw_metadata: dict[str, Any]) -> dict[str, Any]:
+    module = raw_metadata.get("modulePreferences", {})
+    if not isinstance(module, dict):
+        return {}
+    out = json.loads(json.dumps(module))
+    for path in ALIGNMENT_MODULE_OMIT_PATHS:
+        _remove_nested_key(out, path)
+    return out
+
+
 def _field_kind(field: Any) -> str:
     if FieldDescriptor is None:
         return "string"
@@ -1234,6 +1296,7 @@ def ui_nodes_compare_sync(
     sync_module_config: bool = Form(True),
     sync_channels: bool = Form(True),
     sync_location: bool = Form(False),
+    use_alignment_profile: bool = Form(True),
     dry_run: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
@@ -1252,6 +1315,12 @@ def ui_nodes_compare_sync(
             "module_config_patch": {},
             "channels_patch": [],
         }
+        source_raw = source_node.raw_metadata if isinstance(source_node.raw_metadata, dict) else {}
+        if use_alignment_profile:
+            if sync_local_config:
+                base_patch["local_config_patch"] = _build_alignment_local_patch(source_raw)
+            if sync_module_config:
+                base_patch["module_config_patch"] = _build_alignment_module_patch(source_raw)
         if sync_location:
             if source_node.latitude is None or source_node.longitude is None:
                 return RedirectResponse(url="/nodes?error=Source+node+has+no+known+location", status_code=303)
@@ -1260,6 +1329,14 @@ def ui_nodes_compare_sync(
             if source_node.altitude is not None:
                 base_patch["altitude"] = source_node.altitude
 
+        clone_payload = {
+            "source_node_id": str(source_node_id),
+            "include_local_config": sync_local_config and not use_alignment_profile,
+            "include_module_config": sync_module_config and not use_alignment_profile,
+            "include_channels": sync_channels,
+            "include_role": False,
+            "include_favorite": False,
+        }
         job = JobsService(db).create(
             job_type="multi_node_config_patch",
             requested_by=user.username,
@@ -1268,14 +1345,7 @@ def ui_nodes_compare_sync(
                 "node_ids": [str(node_id) for node_id in node_ids],
                 "dry_run": dry_run,
                 "base_patch": base_patch,
-                "clone": {
-                    "source_node_id": str(source_node_id),
-                    "include_local_config": sync_local_config,
-                    "include_module_config": sync_module_config,
-                    "include_channels": sync_channels,
-                    "include_role": False,
-                    "include_favorite": False,
-                },
+                "clone": clone_payload,
                 "location_spread": {"enabled": False},
             },
         )

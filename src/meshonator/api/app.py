@@ -35,7 +35,13 @@ from meshonator.groups.service import GroupsService
 from meshonator.inventory.service import InventoryService
 from meshonator.jobs.service import JobsService
 from meshonator.map.service import MapService
-from meshonator.jobs.queue import enqueue_discovery_job, enqueue_group_patch_job, enqueue_node_patch_job, enqueue_sync_job
+from meshonator.jobs.queue import (
+    enqueue_discovery_job,
+    enqueue_group_patch_job,
+    enqueue_multi_node_patch_job,
+    enqueue_node_patch_job,
+    enqueue_sync_job,
+)
 from meshonator.operations.service import OperationsService
 from meshonator.providers.registry import ProviderRegistry
 from meshonator.sync.service import SyncService
@@ -132,6 +138,16 @@ def _parse_optional_bool(raw: str) -> bool | None:
     if value in {"false", "0", "no", "off"}:
         return False
     raise ValueError(f"Invalid boolean value: {raw}")
+
+
+def _parse_uuid_list(values: list[str]) -> list[UUID]:
+    out: list[UUID] = []
+    for value in values:
+        v = value.strip()
+        if not v:
+            continue
+        out.append(UUID(v))
+    return out
 
 
 def _set_nested(dst: dict[str, Any], path: list[str], value: Any) -> None:
@@ -537,7 +553,108 @@ def nodes_page(
 ) -> HTMLResponse:
     svc = InventoryService(db)
     nodes = svc.list_nodes(provider=provider)
-    return templates.TemplateResponse(request, "nodes.html", {"user": user, "nodes": nodes, "provider": provider})
+    return templates.TemplateResponse(
+        request,
+        "nodes.html",
+        {
+            "user": user,
+            "nodes": nodes,
+            "provider": provider,
+            "ui_message": request.query_params.get("message"),
+            "ui_error": request.query_params.get("error"),
+        },
+    )
+
+
+@app.post("/ui/nodes/batch-configure")
+def ui_nodes_batch_configure(
+    selected_node_ids: list[str] = Form(default=[]),
+    clone_source_node_id: str = Form(""),
+    clone_local_config: bool = Form(False),
+    clone_module_config: bool = Form(False),
+    clone_channels: bool = Form(False),
+    clone_role: bool = Form(False),
+    clone_favorite: bool = Form(False),
+    local_config_patch_json: str = Form(""),
+    module_config_patch_json: str = Form(""),
+    channels_patch_json: str = Form(""),
+    role_override: str = Form(""),
+    favorite_state: str = Form("keep"),
+    center_latitude: str = Form(""),
+    center_longitude: str = Form(""),
+    center_altitude: str = Form(""),
+    spread_step_m: str = Form("0"),
+    dry_run: bool = Form(True),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        node_ids = _parse_uuid_list(selected_node_ids)
+        if not node_ids:
+            return RedirectResponse(url="/nodes?error=Select+at+least+one+node", status_code=303)
+
+        base_patch: dict[str, Any] = {
+            "local_config_patch": _parse_json_dict(local_config_patch_json),
+            "module_config_patch": _parse_json_dict(module_config_patch_json),
+            "channels_patch": _parse_json_list(channels_patch_json),
+        }
+        if value := role_override.strip():
+            base_patch["role"] = value.upper()
+        favorite_value = _parse_optional_bool(favorite_state)
+        if favorite_value is not None:
+            base_patch["favorite"] = favorite_value
+
+        location_enabled = False
+        location_payload: dict[str, Any] = {
+            "enabled": False,
+            "center_latitude": None,
+            "center_longitude": None,
+            "center_altitude": None,
+            "step_m": 0,
+        }
+        if center_latitude.strip() and center_longitude.strip():
+            location_enabled = True
+            location_payload["enabled"] = True
+            location_payload["center_latitude"] = float(center_latitude.strip())
+            location_payload["center_longitude"] = float(center_longitude.strip())
+            location_payload["center_altitude"] = _parse_optional_float(center_altitude)
+            location_payload["step_m"] = max(0.0, float(spread_step_m.strip() or "0"))
+
+        clone_source = clone_source_node_id.strip()
+        clone_payload = {
+            "source_node_id": clone_source or None,
+            "include_local_config": clone_local_config,
+            "include_module_config": clone_module_config,
+            "include_channels": clone_channels,
+            "include_role": clone_role,
+            "include_favorite": clone_favorite,
+        }
+
+        if clone_source and not any([clone_local_config, clone_module_config, clone_channels, clone_role, clone_favorite]):
+            return RedirectResponse(url="/nodes?error=Select+at+least+one+clone+option", status_code=303)
+        if not clone_source:
+            clone_payload = {}
+        if location_enabled and location_payload["step_m"] <= 0 and len(node_ids) > 1:
+            return RedirectResponse(url="/nodes?error=Spread+step+must+be+greater+than+0+for+multiple+nodes", status_code=303)
+
+        job = JobsService(db).create(
+            job_type="multi_node_config_patch",
+            requested_by=user.username,
+            source="ui",
+            payload={
+                "node_ids": [str(node_id) for node_id in node_ids],
+                "dry_run": dry_run,
+                "base_patch": base_patch,
+                "clone": clone_payload,
+                "location_spread": location_payload,
+            },
+        )
+        enqueue_multi_node_patch_job(job.id, registry)
+        message = quote_plus(f"Batch node patch queued. Job ID: {job.id}")
+        return RedirectResponse(url=f"/nodes?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Batch configure failed: {exc}")
+        return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
 
 
 @app.get("/nodes/{node_id}", response_class=HTMLResponse)

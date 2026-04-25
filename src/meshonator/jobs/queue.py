@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import json
+import math
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from copy import deepcopy
 from uuid import UUID
 
 from meshonator.audit.service import AuditService
 from meshonator.config.settings import get_settings
 from sqlalchemy import select
 
-from meshonator.db.models import JobModel, ProviderEndpointModel
+from meshonator.db.models import JobModel, ManagedNodeModel, ProviderEndpointModel
 from meshonator.db.session import SessionLocal
 from meshonator.discovery.service import DiscoveryService
 from meshonator.domain.models import ConfigPatch
@@ -43,6 +46,11 @@ def enqueue_node_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
         executor.submit(_run_node_patch_job, job_id, registry)
 
 
+def enqueue_multi_node_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    if settings.job_executor_mode == "local":
+        executor.submit(_run_multi_node_patch_job, job_id, registry)
+
+
 def run_job(job_id: UUID, registry: ProviderRegistry) -> None:
     with SessionLocal() as db:
         job = db.get(JobModel, job_id)
@@ -58,6 +66,8 @@ def run_job(job_id: UUID, registry: ProviderRegistry) -> None:
         _run_group_patch_job(job_id, registry)
     elif job_type == "node_config_patch":
         _run_node_patch_job(job_id, registry)
+    elif job_type == "multi_node_config_patch":
+        _run_multi_node_patch_job(job_id, registry)
     else:
         with SessionLocal() as db:
             jobs = JobsService(db)
@@ -343,6 +353,225 @@ def _run_node_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
                 node_id=UUID(node_id),
                 metadata={
                     "dry_run": dry_run,
+                    "completed_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        except Exception as exc:
+            db.rollback()
+            jobs.add_result(job_id=job_id, status="failed", node_id=None, message=str(exc), details={})
+            jobs.finish(job_id, success=False)
+
+
+def _deep_merge_dict(base: dict, override: dict) -> dict:
+    out = deepcopy(base)
+    for key, value in override.items():
+        if key in out and isinstance(out[key], dict) and isinstance(value, dict):
+            out[key] = _deep_merge_dict(out[key], value)
+        else:
+            out[key] = deepcopy(value)
+    return out
+
+
+def _merge_channels_patch(base: list[dict], override: list[dict]) -> list[dict]:
+    by_index: dict[int, dict] = {}
+    for item in base:
+        if isinstance(item, dict) and isinstance(item.get("index"), int):
+            by_index[item["index"]] = deepcopy(item)
+    for item in override:
+        if not isinstance(item, dict) or not isinstance(item.get("index"), int):
+            continue
+        idx = item["index"]
+        current = by_index.get(idx, {"index": idx})
+        merged = deepcopy(current)
+        for key, value in item.items():
+            if key in {"settings", "moduleSettings", "module_settings"} and isinstance(value, dict):
+                target_key = "moduleSettings" if key in {"moduleSettings", "module_settings"} else "settings"
+                existing = merged.get(target_key, {})
+                if not isinstance(existing, dict):
+                    existing = {}
+                merged[target_key] = _deep_merge_dict(existing, value)
+            else:
+                merged[key] = deepcopy(value)
+        by_index[idx] = merged
+    return [by_index[i] for i in sorted(by_index)]
+
+
+def _sanitize_clone_local_config(local_cfg: dict, include_role: bool) -> dict:
+    out = deepcopy(local_cfg)
+    if "security" in out:
+        out.pop("security", None)
+    device_section = out.get("device")
+    if isinstance(device_section, dict) and not include_role:
+        device_section.pop("role", None)
+    return out
+
+
+def _channels_to_patch(channels: list) -> list[dict]:
+    out: list[dict] = []
+    for item in channels:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        if not isinstance(index, int):
+            continue
+        row: dict = {"index": index}
+        role = item.get("role")
+        if isinstance(role, str) and role.strip():
+            row["role"] = role.strip().upper()
+        settings = item.get("settings")
+        if isinstance(settings, dict):
+            row["settings"] = settings
+        module_settings = item.get("moduleSettings")
+        if not isinstance(module_settings, dict):
+            module_settings = item.get("module_settings")
+        if isinstance(module_settings, dict):
+            row["moduleSettings"] = module_settings
+        out.append(row)
+    return out
+
+
+def _offset_lat_lon(lat: float, lon: float, distance_m: float, bearing_deg: float) -> tuple[float, float]:
+    earth_radius_m = 6371000.0
+    lat1 = math.radians(lat)
+    lon1 = math.radians(lon)
+    bearing = math.radians(bearing_deg)
+    angular_distance = distance_m / earth_radius_m
+    lat2 = math.asin(
+        math.sin(lat1) * math.cos(angular_distance)
+        + math.cos(lat1) * math.sin(angular_distance) * math.cos(bearing)
+    )
+    lon2 = lon1 + math.atan2(
+        math.sin(bearing) * math.sin(angular_distance) * math.cos(lat1),
+        math.cos(angular_distance) - math.sin(lat1) * math.sin(lat2),
+    )
+    return (math.degrees(lat2), math.degrees(lon2))
+
+
+def _spread_location(index: int, total: int, center_lat: float, center_lon: float, step_m: float) -> tuple[float, float]:
+    if total <= 1 or step_m <= 0:
+        return center_lat, center_lon
+    ring_capacity = 8
+    ring = (index // ring_capacity) + 1
+    slot = index % ring_capacity
+    bearing = (360.0 / ring_capacity) * slot
+    radius = step_m * ring
+    return _offset_lat_lon(center_lat, center_lon, radius, bearing)
+
+
+def _run_multi_node_patch_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    with SessionLocal() as db:
+        jobs = JobsService(db)
+        job = db.get(JobModel, job_id)
+        if job is None:
+            return
+        jobs.start(job_id)
+        payload = job.payload or {}
+        dry_run = bool(payload.get("dry_run", True))
+        node_ids_raw = payload.get("node_ids", [])
+        base_patch_payload = payload.get("base_patch", {}) or {}
+        clone = payload.get("clone", {}) or {}
+        location = payload.get("location_spread", {}) or {}
+        include_role = bool(clone.get("include_role", False))
+        include_favorite = bool(clone.get("include_favorite", False))
+
+        try:
+            node_ids = [UUID(node_id) for node_id in node_ids_raw]
+            if not node_ids:
+                raise ValueError("No nodes selected")
+
+            merged_base_patch = deepcopy(base_patch_payload)
+
+            source_node_id = clone.get("source_node_id")
+            if source_node_id:
+                source = db.get(ManagedNodeModel, UUID(source_node_id))
+                if source is None:
+                    raise ValueError("Clone source node not found")
+                raw_meta = source.raw_metadata if isinstance(source.raw_metadata, dict) else {}
+                if bool(clone.get("include_local_config", False)):
+                    source_local = raw_meta.get("preferences", {})
+                    if isinstance(source_local, dict):
+                        source_local = _sanitize_clone_local_config(source_local, include_role=include_role)
+                        merged_base_patch["local_config_patch"] = _deep_merge_dict(
+                            source_local,
+                            merged_base_patch.get("local_config_patch", {}) if isinstance(merged_base_patch.get("local_config_patch"), dict) else {},
+                        )
+                if bool(clone.get("include_module_config", False)):
+                    source_module = raw_meta.get("modulePreferences", {})
+                    if isinstance(source_module, dict):
+                        merged_base_patch["module_config_patch"] = _deep_merge_dict(
+                            source_module,
+                            merged_base_patch.get("module_config_patch", {}) if isinstance(merged_base_patch.get("module_config_patch"), dict) else {},
+                        )
+                if bool(clone.get("include_channels", False)):
+                    source_channels = raw_meta.get("channels", [])
+                    if isinstance(source_channels, list):
+                        merged_base_patch["channels_patch"] = _merge_channels_patch(
+                            _channels_to_patch(source_channels),
+                            merged_base_patch.get("channels_patch", []) if isinstance(merged_base_patch.get("channels_patch"), list) else [],
+                        )
+                if include_role and isinstance(source.role, str) and source.role.strip():
+                    merged_base_patch["role"] = source.role.strip()
+                if include_favorite:
+                    merged_base_patch["favorite"] = bool(source.favorite)
+
+            use_spread = bool(location.get("enabled", False))
+            center_lat = location.get("center_latitude")
+            center_lon = location.get("center_longitude")
+            center_alt = location.get("center_altitude")
+            step_m = float(location.get("step_m", 0) or 0)
+
+            ops = OperationsService(db, registry)
+            success_count = 0
+            fail_count = 0
+            for index, node_id in enumerate(node_ids):
+                try:
+                    node_patch_payload = deepcopy(merged_base_patch)
+                    if use_spread and isinstance(center_lat, (int, float)) and isinstance(center_lon, (int, float)):
+                        lat, lon = _spread_location(index=index, total=len(node_ids), center_lat=float(center_lat), center_lon=float(center_lon), step_m=step_m)
+                        node_patch_payload["latitude"] = lat
+                        node_patch_payload["longitude"] = lon
+                        if isinstance(center_alt, (int, float)):
+                            node_patch_payload["altitude"] = float(center_alt)
+                    patch = ConfigPatch(**node_patch_payload)
+                    result = ops.apply_patch(
+                        node_id=node_id,
+                        patch=patch,
+                        actor=job.requested_by,
+                        source=job.source,
+                        dry_run=dry_run,
+                    )
+                    jobs.add_result(
+                        job_id=job_id,
+                        status="success",
+                        node_id=node_id,
+                        message="Batch patch applied",
+                        details={"result": result},
+                    )
+                    success_count += 1
+                except Exception as node_exc:
+                    db.rollback()
+                    jobs.add_result(
+                        job_id=job_id,
+                        status="failed",
+                        node_id=node_id,
+                        message=str(node_exc),
+                        details={},
+                    )
+                    fail_count += 1
+
+            jobs.finish(job_id, success=fail_count == 0)
+            AuditService(db).log(
+                actor=job.requested_by,
+                source=job.source,
+                action="node.batch_patch.queued",
+                metadata={
+                    "dry_run": dry_run,
+                    "selected_nodes": len(node_ids),
+                    "success_count": success_count,
+                    "fail_count": fail_count,
+                    "clone": clone,
+                    "location_spread": location,
+                    "base_patch": json.loads(json.dumps(base_patch_payload)),
                     "completed_at": datetime.now(UTC).isoformat(),
                 },
             )

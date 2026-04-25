@@ -1,15 +1,89 @@
 {% extends "base.html" %}
 {% block content %}
+{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
+
+<section class="card">
+  <h1>Batch Configure Nodes</h1>
+  <p class="muted">Select nodes in the table below, then queue one shared configuration job.</p>
+  <form method="post" action="/ui/nodes/batch-configure" class="stack" id="batch-config-form">
+    <fieldset>
+      <legend>Clone from source node</legend>
+      <label>Source node
+        <select name="clone_source_node_id">
+          <option value="">None (manual patch only)</option>
+          {% for n in nodes %}
+          <option value="{{ n.id }}">{{ n.provider }} :: {{ n.short_name or n.provider_node_id }} ({{ n.provider_node_id }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label><input type="checkbox" name="clone_local_config" value="true" checked /> Clone local config (excluding security)</label>
+      <label><input type="checkbox" name="clone_module_config" value="true" checked /> Clone module config</label>
+      <label><input type="checkbox" name="clone_channels" value="true" checked /> Clone channels</label>
+      <label><input type="checkbox" name="clone_role" value="true" /> Clone role</label>
+      <label><input type="checkbox" name="clone_favorite" value="true" /> Clone pinned state</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Manual Overrides</legend>
+      <label>Role override
+        <input type="text" name="role_override" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" />
+      </label>
+      <label>Pinned state
+        <select name="favorite_state">
+          <option value="keep">Keep current</option>
+          <option value="true">Pin</option>
+          <option value="false">Unpin</option>
+        </select>
+      </label>
+      <label>Local config patch JSON
+        <textarea name="local_config_patch_json" rows="4" placeholder='{"position":{"gpsUpdateInterval":120}}'></textarea>
+      </label>
+      <label>Module config patch JSON
+        <textarea name="module_config_patch_json" rows="4" placeholder='{"telemetry":{"deviceUpdateInterval":300}}'></textarea>
+      </label>
+      <label>Channels patch JSON
+        <textarea name="channels_patch_json" rows="4" placeholder='[{"index":0,"moduleSettings":{"positionPrecision":13}}]'></textarea>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Location Spread</legend>
+      <p class="muted">Set a common center and spread nodes around it. Example: 4 nodes with step 50 m.</p>
+      <label>Center latitude
+        <input type="number" step="any" name="center_latitude" placeholder="53.4511616" />
+      </label>
+      <label>Center longitude
+        <input type="number" step="any" name="center_longitude" placeholder="14.5489920" />
+      </label>
+      <label>Center altitude (optional)
+        <input type="number" step="any" name="center_altitude" placeholder="30" />
+      </label>
+      <label>Spread step (meters)
+        <input type="number" min="0" step="1" name="spread_step_m" value="50" />
+      </label>
+    </fieldset>
+
+    <label><input type="checkbox" name="dry_run" value="true" checked /> Dry run</label>
+    <button type="submit">Queue Batch Node Changes</button>
+  </form>
+</section>
+
 <section class="card">
   <h1>Nodes</h1>
+  <p class="muted">
+    <button type="button" onclick="toggleAllNodeSelection(true)">Select all</button>
+    <button type="button" onclick="toggleAllNodeSelection(false)">Clear</button>
+  </p>
   <table>
     <tr>
-      <th>Provider</th><th>Node ID</th><th>Name</th><th>IP</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>
+      <th>Select</th><th>Provider</th><th>Node ID</th><th>Name</th><th>IP</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>
     </tr>
     {% for n in nodes %}
     {% set primary_ep = (n.endpoints | selectattr('is_primary') | list | first) %}
     {% set fallback_ep = (n.endpoints | list | first) %}
     <tr>
+      <td><input type="checkbox" form="batch-config-form" name="selected_node_ids" value="{{ n.id }}" class="node-selector" /></td>
       <td>{{ n.provider }}</td>
       <td>
         <a href="/nodes/{{ n.id }}">{{ n.short_name or n.provider_node_id }}</a>
@@ -30,4 +104,11 @@
     {% endfor %}
   </table>
 </section>
+<script>
+function toggleAllNodeSelection(state) {
+  document.querySelectorAll(".node-selector").forEach(function (el) {
+    el.checked = state;
+  });
+}
+</script>
 {% endblock %}

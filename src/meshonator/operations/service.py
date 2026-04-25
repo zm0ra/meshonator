@@ -58,29 +58,34 @@ class OperationsService:
         }
         result = provider.apply_config_patch(conn, node.provider_node_id, patch, dry_run=dry_run)
 
-        if patch.short_name is not None:
-            node.short_name = patch.short_name
-        if patch.long_name is not None:
-            node.long_name = patch.long_name
-        if patch.role is not None:
-            node.role = patch.role
-        if patch.favorite is not None:
-            node.favorite = patch.favorite
-        if patch.latitude is not None:
-            node.latitude = patch.latitude
-        if patch.longitude is not None:
-            node.longitude = patch.longitude
-        if patch.altitude is not None:
-            node.altitude = patch.altitude
-        node.last_successful_sync = datetime.now(timezone.utc)
-        self.db.commit()
+        if not dry_run:
+            if patch.short_name is not None:
+                node.short_name = patch.short_name
+            if patch.long_name is not None:
+                node.long_name = patch.long_name
+            if patch.role is not None:
+                node.role = patch.role
+            if patch.favorite is not None:
+                node.favorite = patch.favorite
+            if patch.latitude is not None:
+                node.latitude = patch.latitude
+            if patch.longitude is not None:
+                node.longitude = patch.longitude
+            if patch.altitude is not None:
+                node.altitude = patch.altitude
+            node.last_successful_sync = datetime.now(timezone.utc)
+            self.db.commit()
 
         after = {
-            "short_name": node.short_name,
-            "long_name": node.long_name,
-            "role": node.role,
-            "favorite": node.favorite,
-            "location": {"lat": node.latitude, "lon": node.longitude, "alt": node.altitude},
+            "short_name": patch.short_name if patch.short_name is not None else node.short_name,
+            "long_name": patch.long_name if patch.long_name is not None else node.long_name,
+            "role": patch.role if patch.role is not None else node.role,
+            "favorite": patch.favorite if patch.favorite is not None else node.favorite,
+            "location": {
+                "lat": patch.latitude if patch.latitude is not None else node.latitude,
+                "lon": patch.longitude if patch.longitude is not None else node.longitude,
+                "alt": patch.altitude if patch.altitude is not None else node.altitude,
+            },
         }
 
         self.audit.log(

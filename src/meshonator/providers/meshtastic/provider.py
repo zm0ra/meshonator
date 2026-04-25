@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from google.protobuf.json_format import MessageToDict
+from google.protobuf.json_format import MessageToDict, ParseDict
 
 from meshonator.config.settings import get_settings
 from meshonator.domain.models import (
@@ -377,7 +377,7 @@ def _apply_local_config_patch(local_node: Any, patch: dict[str, Any]) -> list[st
         if not hasattr(local_node.localConfig, section_name):
             continue
         section_msg = getattr(local_node.localConfig, section_name)
-        _assign_message_fields(section_msg, section_values)
+        _apply_section_patch(section_msg, section_values)
         local_node.writeConfig(section_name)
         written.append(section_name)
     return written
@@ -392,7 +392,7 @@ def _apply_module_config_patch(local_node: Any, patch: dict[str, Any]) -> list[s
         if not hasattr(local_node.moduleConfig, section_name):
             continue
         section_msg = getattr(local_node.moduleConfig, section_name)
-        _assign_message_fields(section_msg, section_values)
+        _apply_section_patch(section_msg, section_values)
         local_node.writeConfig(section_name)
         written.append(section_name)
     return written
@@ -412,10 +412,10 @@ def _apply_channels_patch(local_node: Any, channels_patch: list[dict[str, Any]])
             continue
         settings_patch = item.get("settings")
         if isinstance(settings_patch, dict) and hasattr(channel, "settings"):
-            _assign_message_fields(channel.settings, settings_patch)
+            _apply_section_patch(channel.settings, settings_patch)
         module_settings_patch = item.get("moduleSettings") or item.get("module_settings")
         if isinstance(module_settings_patch, dict) and hasattr(channel, "module_settings"):
-            _assign_message_fields(channel.module_settings, module_settings_patch)
+            _apply_section_patch(channel.module_settings, module_settings_patch)
         role_name = item.get("role")
         if isinstance(role_name, str) and role_name.strip():
             try:
@@ -426,3 +426,10 @@ def _apply_channels_patch(local_node: Any, channels_patch: list[dict[str, Any]])
         local_node.writeChannel(index)
         applied.append({"index": index})
     return applied
+
+
+def _apply_section_patch(section_msg: Any, patch: dict[str, Any]) -> None:
+    if hasattr(section_msg, "DESCRIPTOR"):
+        ParseDict(patch, section_msg, ignore_unknown_fields=False)
+    else:
+        _assign_message_fields(section_msg, patch)

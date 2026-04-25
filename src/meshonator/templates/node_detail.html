@@ -19,13 +19,28 @@
   </article>
   <article class="card">
     <h2>Location</h2>
+    <p class="muted">Click map to set latitude/longitude in the form below.</p>
     <div id="previewMap" style="height: 280px"></div>
     <script>
-      const map = L.map('previewMap').setView([{{ node.latitude or 0 }}, {{ node.longitude or 0 }}], 8);
+      const map = L.map('previewMap').setView([{{ node.latitude or 53.43 }}, {{ node.longitude or 14.55 }}], 10);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      let pickMarker = null;
       {% if node.latitude and node.longitude %}
-      L.marker([{{ node.latitude }}, {{ node.longitude }}]).addTo(map).bindPopup('{{ node.long_name or node.provider_node_id }}');
+      pickMarker = L.marker([{{ node.latitude }}, {{ node.longitude }}]).addTo(map).bindPopup('{{ node.long_name or node.provider_node_id }}');
       {% endif %}
+      map.on('click', function(e) {
+        const lat = Number(e.latlng.lat.toFixed(7));
+        const lon = Number(e.latlng.lng.toFixed(7));
+        const latInput = document.querySelector('input[name="latitude"]');
+        const lonInput = document.querySelector('input[name="longitude"]');
+        if (latInput) latInput.value = lat;
+        if (lonInput) lonInput.value = lon;
+        if (pickMarker) {
+          pickMarker.setLatLng([lat, lon]);
+        } else {
+          pickMarker = L.marker([lat, lon]).addTo(map);
+        }
+      });
     </script>
   </article>
 </section>
@@ -105,11 +120,44 @@
     <label>LoRa TX power
       <input type="number" min="0" name="lora_tx_power" placeholder="27" />
     </label>
+    <label>Primary channel position precision
+      <input type="number" min="0" max="32" name="primary_channel_position_precision" placeholder="13" />
+    </label>
     <label>Telemetry device interval (sec)
       <input type="number" min="0" name="telemetry_device_update_interval" placeholder="300" />
     </label>
     <label>Telemetry device enabled
       <select name="telemetry_device_enabled">
+        <option value="keep">Keep current</option>
+        <option value="true">Enable</option>
+        <option value="false">Disable</option>
+      </select>
+    </label>
+    <label>Telemetry environment interval (sec)
+      <input type="number" min="0" name="telemetry_environment_update_interval" placeholder="300" />
+    </label>
+    <label>Telemetry environment enabled
+      <select name="telemetry_environment_enabled">
+        <option value="keep">Keep current</option>
+        <option value="true">Enable</option>
+        <option value="false">Disable</option>
+      </select>
+    </label>
+    <label>Telemetry power interval (sec)
+      <input type="number" min="0" name="telemetry_power_update_interval" placeholder="300" />
+    </label>
+    <label>Telemetry power enabled
+      <select name="telemetry_power_enabled">
+        <option value="keep">Keep current</option>
+        <option value="true">Enable</option>
+        <option value="false">Disable</option>
+      </select>
+    </label>
+    <label>Telemetry health interval (sec)
+      <input type="number" min="0" name="telemetry_health_update_interval" placeholder="300" />
+    </label>
+    <label>Telemetry health enabled
+      <select name="telemetry_health_enabled">
         <option value="keep">Keep current</option>
         <option value="true">Enable</option>
         <option value="false">Disable</option>
@@ -123,6 +171,15 @@
     </label>
     <label>Channels patch (JSON array)
       <textarea name="channels_patch_json" rows="6" placeholder='[{"index":0,"settings":{"name":"mesh"}}]'></textarea>
+    </label>
+    <label>Full localConfig (JSON object)
+      <textarea name="full_local_config_json" rows="10">{{ current_local_config | tojson(indent=2) }}</textarea>
+    </label>
+    <label>Full moduleConfig (JSON object)
+      <textarea name="full_module_config_json" rows="10">{{ current_module_config | tojson(indent=2) }}</textarea>
+    </label>
+    <label>Full channels (JSON array)
+      <textarea name="full_channels_json" rows="10">{{ current_channels | tojson(indent=2) }}</textarea>
     </label>
     <div><button type="submit">Apply Node Changes</button></div>
   </form>

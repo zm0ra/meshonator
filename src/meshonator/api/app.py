@@ -143,6 +143,30 @@ def _merge_patch(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _merge_list_patch(base: list[dict[str, Any]], extra: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: dict[int, dict[str, Any]] = {}
+    for item in base:
+        if not isinstance(item, dict) or not isinstance(item.get("index"), int):
+            continue
+        out[item["index"]] = dict(item)
+    for item in extra:
+        if not isinstance(item, dict) or not isinstance(item.get("index"), int):
+            continue
+        idx = item["index"]
+        current = out.get(idx, {"index": idx})
+        merged = dict(current)
+        for key, value in item.items():
+            if key in {"settings", "moduleSettings", "module_settings"} and isinstance(value, dict):
+                existing = merged.get("moduleSettings" if key in {"moduleSettings", "module_settings"} else "settings", {})
+                if not isinstance(existing, dict):
+                    existing = {}
+                merged["moduleSettings" if key in {"moduleSettings", "module_settings"} else "settings"] = _merge_patch(existing, value)
+            else:
+                merged[key] = value
+        out[idx] = merged
+    return [out[i] for i in sorted(out)]
+
+
 def _normalize_roles(raw: str) -> list[str]:
     roles = []
     for item in _parse_multi_value(raw):
@@ -177,6 +201,27 @@ def _extract_zero_hop_candidates(raw_metadata: dict[str, Any], max_hops: int = 0
             }
         )
     out.sort(key=lambda item: (item.get("hops_away", 999), (item.get("short_name") or item.get("id") or "")))
+    return out
+
+
+def _channels_to_patch(channels: list[Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for item in channels:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        if not isinstance(index, int):
+            continue
+        patch: dict[str, Any] = {"index": index}
+        if isinstance(item.get("settings"), dict):
+            patch["settings"] = item["settings"]
+        if isinstance(item.get("moduleSettings"), dict):
+            patch["moduleSettings"] = item["moduleSettings"]
+        if isinstance(item.get("module_settings"), dict):
+            patch["moduleSettings"] = item["module_settings"]
+        if isinstance(item.get("role"), str) and item.get("role"):
+            patch["role"] = item["role"]
+        out.append(patch)
     return out
 
 
@@ -381,6 +426,9 @@ def node_details_page(
         raise HTTPException(status_code=404, detail="Node not found")
     audits = list(db.scalars(select(AuditLogModel).where(AuditLogModel.node_id == node.id).order_by(AuditLogModel.created_at.desc()).limit(20)).all())
     zero_hop_candidates = _extract_zero_hop_candidates(node.raw_metadata or {}, max_hops=0)
+    current_local_config = node.raw_metadata.get("preferences", {}) if isinstance(node.raw_metadata, dict) else {}
+    current_module_config = node.raw_metadata.get("modulePreferences", {}) if isinstance(node.raw_metadata, dict) else {}
+    current_channels = node.raw_metadata.get("channels", []) if isinstance(node.raw_metadata, dict) else []
     return templates.TemplateResponse(
         request,
         "node_detail.html",
@@ -389,6 +437,9 @@ def node_details_page(
             "node": node,
             "audits": audits,
             "zero_hop_candidates": zero_hop_candidates,
+            "current_local_config": current_local_config,
+            "current_module_config": current_module_config,
+            "current_channels": current_channels,
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
         },
@@ -408,6 +459,9 @@ def ui_node_configure(
     local_config_patch_json: str = Form(""),
     module_config_patch_json: str = Form(""),
     channels_patch_json: str = Form(""),
+    full_local_config_json: str = Form(""),
+    full_module_config_json: str = Form(""),
+    full_channels_json: str = Form(""),
     position_broadcast_secs: str = Form(""),
     position_broadcast_smart_enabled: str = Form("keep"),
     gps_update_interval: str = Form(""),
@@ -419,8 +473,15 @@ def ui_node_configure(
     device_role: str = Form(""),
     lora_hop_limit: str = Form(""),
     lora_tx_power: str = Form(""),
+    primary_channel_position_precision: str = Form(""),
     telemetry_device_update_interval: str = Form(""),
     telemetry_device_enabled: str = Form("keep"),
+    telemetry_environment_update_interval: str = Form(""),
+    telemetry_environment_enabled: str = Form("keep"),
+    telemetry_power_update_interval: str = Form(""),
+    telemetry_power_enabled: str = Form("keep"),
+    telemetry_health_update_interval: str = Form(""),
+    telemetry_health_enabled: str = Form("keep"),
     dry_run: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
@@ -433,7 +494,14 @@ def ui_node_configure(
             favorite_value = False
         local_patch = _parse_json_dict(local_config_patch_json)
         module_patch = _parse_json_dict(module_config_patch_json)
-        channels_patch = _parse_json_list(channels_patch_json)
+        channels_patch = _channels_to_patch(_parse_json_list(channels_patch_json))
+
+        if full_local_config_json.strip():
+            local_patch = _merge_patch(_parse_json_dict(full_local_config_json), local_patch)
+        if full_module_config_json.strip():
+            module_patch = _merge_patch(_parse_json_dict(full_module_config_json), module_patch)
+        if full_channels_json.strip():
+            channels_patch = _merge_list_patch(_channels_to_patch(_parse_json_list(full_channels_json)), channels_patch)
 
         value = _parse_optional_int(position_broadcast_secs)
         if value is not None:
@@ -467,12 +535,36 @@ def ui_node_configure(
         value = _parse_optional_int(lora_tx_power)
         if value is not None:
             _set_nested(local_patch, ["lora", "txPower"], value)
+        value = _parse_optional_int(primary_channel_position_precision)
+        if value is not None:
+            channels_patch = _merge_list_patch(
+                channels_patch,
+                [{"index": 0, "moduleSettings": {"positionPrecision": value}}],
+            )
         value = _parse_optional_int(telemetry_device_update_interval)
         if value is not None:
             _set_nested(module_patch, ["telemetry", "deviceUpdateInterval"], value)
         value = _parse_optional_bool(telemetry_device_enabled)
         if value is not None:
             _set_nested(module_patch, ["telemetry", "deviceTelemetryEnabled"], value)
+        value = _parse_optional_int(telemetry_environment_update_interval)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "environmentUpdateInterval"], value)
+        value = _parse_optional_bool(telemetry_environment_enabled)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "environmentMeasurementEnabled"], value)
+        value = _parse_optional_int(telemetry_power_update_interval)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "powerUpdateInterval"], value)
+        value = _parse_optional_bool(telemetry_power_enabled)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "powerMeasurementEnabled"], value)
+        value = _parse_optional_int(telemetry_health_update_interval)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "healthUpdateInterval"], value)
+        value = _parse_optional_bool(telemetry_health_enabled)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "healthMeasurementEnabled"], value)
 
         patch = ConfigPatch(
             short_name=short_name.strip() or None,

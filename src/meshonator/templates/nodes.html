@@ -45,6 +45,89 @@
   </table>
 </section>
 <section class="card">
+  <h1>Compare Node Configurations</h1>
+  <p class="muted">Compare source node configuration against selected target nodes. Location differences are ignored by default.</p>
+  <form method="post" action="/ui/nodes/compare" class="stack">
+    <label>Source node
+      <select name="source_node_id" required>
+        <option value="">Select source node</option>
+        {% for n in nodes %}
+        <option value="{{ n.id }}" {% if compare_source_id and compare_source_id == (n.id|string) %}selected{% endif %}>
+          {{ n.provider }} :: {{ n.short_name or n.provider_node_id }} ({{ n.provider_node_id }})
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Target nodes (multi-select)
+      <select name="target_node_ids" multiple size="8" required>
+        {% for n in nodes %}
+        <option value="{{ n.id }}" {% if compare_target_ids and (n.id|string) in compare_target_ids %}selected{% endif %}>
+          {{ n.provider }} :: {{ n.short_name or n.provider_node_id }} ({{ n.provider_node_id }})
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label><input type="checkbox" name="ignore_location" value="true" {% if compare_ignore_location is not defined or compare_ignore_location %}checked{% endif %} /> Ignore location differences</label>
+    <button type="submit">Compare Configuration</button>
+  </form>
+</section>
+
+{% if compare_results %}
+<section class="card">
+  <h2>Comparison Results</h2>
+  <table>
+    <tr><th>Target</th><th>Status</th><th>Different Sections</th><th>Diff Count</th></tr>
+    {% for row in compare_results %}
+    <tr>
+      <td><a href="/nodes/{{ row.target.id }}">{{ row.target.short_name or row.target.provider_node_id }}</a></td>
+      <td>{{ row.status }}</td>
+      <td>
+        {% if row.sections %}
+          {{ row.sections | join(', ') }}
+        {% else %}
+          -
+        {% endif %}
+      </td>
+      <td>{{ row.diff_count }}</td>
+    </tr>
+    {% if row.diffs %}
+    <tr>
+      <td colspan="4">
+        <details>
+          <summary>Show differences for {{ row.target.short_name or row.target.provider_node_id }}</summary>
+          <table>
+            <tr><th>Path</th><th>Source</th><th>Target</th></tr>
+            {% for d in row.diffs %}
+            <tr>
+              <td><code>{{ d.path }}</code></td>
+              <td><code>{{ d.source }}</code></td>
+              <td><code>{{ d.target }}</code></td>
+            </tr>
+            {% endfor %}
+          </table>
+        </details>
+      </td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </table>
+
+  <h3>Synchronize From Source To Compared Targets</h3>
+  <form method="post" action="/ui/nodes/compare-sync" class="stack">
+    <input type="hidden" name="source_node_id" value="{{ compare_source_id }}" />
+    {% for target_id in compare_target_ids %}
+    <input type="hidden" name="target_node_ids" value="{{ target_id }}" />
+    {% endfor %}
+    <label><input type="checkbox" name="sync_local_config" value="true" checked /> Sync local config (LoRa/GPS/position/network/device)</label>
+    <label><input type="checkbox" name="sync_module_config" value="true" checked /> Sync module config (telemetry/MQTT/etc.)</label>
+    <label><input type="checkbox" name="sync_channels" value="true" checked /> Sync channels</label>
+    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+    <button type="submit">Queue Synchronization</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="card">
   <h1>Batch Configure Nodes</h1>
   <p class="muted">Select nodes in the table above, then queue one shared configuration job.</p>
   <form method="post" action="/ui/nodes/batch-configure" class="stack" id="batch-config-form">
@@ -105,7 +188,7 @@
       </label>
     </fieldset>
 
-    <label><input type="checkbox" name="dry_run" value="true" checked /> Dry run</label>
+    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
     <button type="submit">Queue Batch Node Changes</button>
   </form>
 </section>

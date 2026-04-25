@@ -150,6 +150,124 @@ def _parse_uuid_list(values: list[str]) -> list[UUID]:
     return out
 
 
+def _node_label(node: ManagedNodeModel) -> str:
+    return node.short_name or node.long_name or node.provider_node_id
+
+
+def _safe_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _normalize_channels_for_compare(channels: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    if not isinstance(channels, list):
+        return out
+    for item in channels:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        if not isinstance(index, int):
+            continue
+        module_settings = item.get("moduleSettings")
+        if not isinstance(module_settings, dict):
+            module_settings = item.get("module_settings")
+        out[str(index)] = {
+            "role": item.get("role"),
+            "settings": _safe_dict(item.get("settings")),
+            "moduleSettings": _safe_dict(module_settings),
+        }
+    return out
+
+
+def _compare_values(source: Any, target: Any, path: str = "") -> list[dict[str, Any]]:
+    diffs: list[dict[str, Any]] = []
+    if isinstance(source, dict) and isinstance(target, dict):
+        for key in sorted(set(source) | set(target)):
+            child_path = f"{path}.{key}" if path else key
+            diffs.extend(_compare_values(source.get(key), target.get(key), child_path))
+        return diffs
+    if isinstance(source, list) and isinstance(target, list):
+        if source != target:
+            diffs.append({"path": path, "source": source, "target": target})
+        return diffs
+    if source != target:
+        diffs.append({"path": path, "source": source, "target": target})
+    return diffs
+
+
+def _section_for_path(path: str) -> str:
+    parts = path.split(".")
+    if not parts:
+        return "unknown"
+    root = parts[0]
+    if root in {"local_config", "module_config"} and len(parts) > 1:
+        return f"{root}.{parts[1]}"
+    if root == "channels" and len(parts) > 1:
+        return f"channels.{parts[1]}"
+    if root == "location":
+        return "location"
+    return root
+
+
+def _is_location_path(path: str) -> bool:
+    return path.startswith("location.")
+
+
+def _build_comparable_snapshot(node: ManagedNodeModel) -> dict[str, Any]:
+    raw = node.raw_metadata if isinstance(node.raw_metadata, dict) else {}
+    return {
+        "local_config": _safe_dict(raw.get("preferences")),
+        "module_config": _safe_dict(raw.get("modulePreferences")),
+        "channels": _normalize_channels_for_compare(raw.get("channels")),
+        "location": {
+            "latitude": node.latitude,
+            "longitude": node.longitude,
+            "altitude": node.altitude,
+        },
+    }
+
+
+def _compare_node_configs(
+    source_node: ManagedNodeModel,
+    target_nodes: list[ManagedNodeModel],
+    *,
+    ignore_location: bool = True,
+) -> list[dict[str, Any]]:
+    source_snapshot = _build_comparable_snapshot(source_node)
+    results: list[dict[str, Any]] = []
+    for target in target_nodes:
+        if target.id == source_node.id:
+            continue
+        if target.provider != source_node.provider:
+            results.append(
+                {
+                    "target": target,
+                    "status": "skipped",
+                    "reason": "Different provider",
+                    "sections": [],
+                    "diffs": [],
+                    "diff_count": 0,
+                }
+            )
+            continue
+        target_snapshot = _build_comparable_snapshot(target)
+        diffs = _compare_values(source_snapshot, target_snapshot)
+        if ignore_location:
+            diffs = [d for d in diffs if not _is_location_path(d["path"])]
+        sections = sorted({_section_for_path(d["path"]) for d in diffs})
+        results.append(
+            {
+                "target": target,
+                "status": "different" if diffs else "same",
+                "reason": "",
+                "sections": sections,
+                "diffs": diffs,
+                "diff_count": len(diffs),
+            }
+        )
+    return results
+
+
 def _set_nested(dst: dict[str, Any], path: list[str], value: Any) -> None:
     cursor = dst
     for segment in path[:-1]:
@@ -550,7 +668,7 @@ def nodes_page(
     provider: str | None = None,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_session_user),
-) -> HTMLResponse:
+    ) -> HTMLResponse:
     svc = InventoryService(db)
     nodes = svc.list_nodes(provider=provider)
     return templates.TemplateResponse(
@@ -562,6 +680,72 @@ def nodes_page(
             "provider": provider,
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
+        },
+    )
+
+
+@app.post("/ui/nodes/compare", response_class=HTMLResponse)
+def ui_nodes_compare(
+    request: Request,
+    source_node_id: UUID = Form(...),
+    target_node_ids: list[str] = Form(default=[]),
+    ignore_location: bool = Form(True),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_session_user),
+) -> HTMLResponse:
+    svc = InventoryService(db)
+    nodes = svc.list_nodes()
+    nodes_by_id = {str(node.id): node for node in nodes}
+    source_node = nodes_by_id.get(str(source_node_id))
+    if source_node is None:
+        return templates.TemplateResponse(
+            request,
+            "nodes.html",
+            {
+                "user": user,
+                "nodes": nodes,
+                "provider": None,
+                "ui_error": "Source node not found",
+                "ui_message": None,
+            },
+            status_code=400,
+        )
+    parsed_target_ids = [str(node_id) for node_id in _parse_uuid_list(target_node_ids)]
+    targets = [nodes_by_id[node_id] for node_id in parsed_target_ids if node_id in nodes_by_id and node_id != str(source_node_id)]
+    if not targets:
+        return templates.TemplateResponse(
+            request,
+            "nodes.html",
+            {
+                "user": user,
+                "nodes": nodes,
+                "provider": None,
+                "ui_error": "Select at least one target node",
+                "ui_message": None,
+                "compare_source_id": str(source_node_id),
+                "compare_target_ids": parsed_target_ids,
+                "compare_ignore_location": ignore_location,
+            },
+            status_code=400,
+        )
+    results = _compare_node_configs(source_node, targets, ignore_location=ignore_location)
+    compared = len(results)
+    different = len([r for r in results if r["status"] == "different"])
+    same = len([r for r in results if r["status"] == "same"])
+    skipped = len([r for r in results if r["status"] == "skipped"])
+    return templates.TemplateResponse(
+        request,
+        "nodes.html",
+        {
+            "user": user,
+            "nodes": nodes,
+            "provider": None,
+            "ui_message": f"Compared {compared} target nodes (different: {different}, same: {same}, skipped: {skipped})",
+            "ui_error": None,
+            "compare_source_id": str(source_node_id),
+            "compare_target_ids": [str(t.id) for t in targets],
+            "compare_ignore_location": ignore_location,
+            "compare_results": results,
         },
     )
 
@@ -654,6 +838,55 @@ def ui_nodes_batch_configure(
         return RedirectResponse(url=f"/nodes?message={message}", status_code=303)
     except Exception as exc:
         error = quote_plus(f"Batch configure failed: {exc}")
+        return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
+
+
+@app.post("/ui/nodes/compare-sync")
+def ui_nodes_compare_sync(
+    source_node_id: UUID = Form(...),
+    target_node_ids: list[str] = Form(default=[]),
+    sync_local_config: bool = Form(True),
+    sync_module_config: bool = Form(True),
+    sync_channels: bool = Form(True),
+    dry_run: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        node_ids = _parse_uuid_list(target_node_ids)
+        if not node_ids:
+            return RedirectResponse(url="/nodes?error=Select+at+least+one+target+node", status_code=303)
+        if not any([sync_local_config, sync_module_config, sync_channels]):
+            return RedirectResponse(url="/nodes?error=Select+at+least+one+section+to+synchronize", status_code=303)
+
+        job = JobsService(db).create(
+            job_type="multi_node_config_patch",
+            requested_by=user.username,
+            source="ui",
+            payload={
+                "node_ids": [str(node_id) for node_id in node_ids],
+                "dry_run": dry_run,
+                "base_patch": {
+                    "local_config_patch": {},
+                    "module_config_patch": {},
+                    "channels_patch": [],
+                },
+                "clone": {
+                    "source_node_id": str(source_node_id),
+                    "include_local_config": sync_local_config,
+                    "include_module_config": sync_module_config,
+                    "include_channels": sync_channels,
+                    "include_role": False,
+                    "include_favorite": False,
+                },
+                "location_spread": {"enabled": False},
+            },
+        )
+        enqueue_multi_node_patch_job(job.id, registry)
+        message = quote_plus(f"Synchronization queued. Job ID: {job.id}")
+        return RedirectResponse(url=f"/nodes?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Synchronization failed: {exc}")
         return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
 
 

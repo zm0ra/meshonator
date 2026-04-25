@@ -35,49 +35,72 @@ class OperationsService:
         if node is None:
             raise ValueError("Node not found")
 
-        provider = self.registry.get(node.provider)
+        remote_update_requested = any(
+            [
+                patch.short_name is not None,
+                patch.long_name is not None,
+                patch.role is not None,
+                patch.latitude is not None and patch.longitude is not None,
+                bool(patch.local_config_patch),
+                bool(patch.module_config_patch),
+                bool(patch.channels_patch),
+            ]
+        )
 
-        endpoint_row = node.endpoints[0] if node.endpoints else None
-        if endpoint_row is None:
-            raise ValueError("Node has no TCP endpoint")
-
-        conn = None
-        try:
-            conn = provider.connect(
-                ProviderConnection(
-                    endpoint=endpoint_row.endpoint,
-                    host=endpoint_row.host,
-                    port=endpoint_row.port,
-                )
-            )
-            before = {
-                "short_name": node.short_name,
-                "long_name": node.long_name,
-                "role": node.role,
-                "favorite": node.favorite,
-                "location": {"lat": node.latitude, "lon": node.longitude, "alt": node.altitude},
-            }
-            result = provider.apply_config_patch(conn, node.provider_node_id, patch, dry_run=dry_run)
-
-            if not dry_run:
-                if patch.short_name is not None:
-                    node.short_name = patch.short_name
-                if patch.long_name is not None:
-                    node.long_name = patch.long_name
-                if patch.role is not None:
-                    node.role = patch.role
-                if patch.favorite is not None:
-                    node.favorite = patch.favorite
-                if patch.latitude is not None:
-                    node.latitude = patch.latitude
-                if patch.longitude is not None:
-                    node.longitude = patch.longitude
-                if patch.altitude is not None:
-                    node.altitude = patch.altitude
+        before = {
+            "short_name": node.short_name,
+            "long_name": node.long_name,
+            "role": node.role,
+            "favorite": node.favorite,
+            "location": {"lat": node.latitude, "lon": node.longitude, "alt": node.altitude},
+        }
+        if not remote_update_requested:
+            if not dry_run and patch.favorite is not None:
+                node.favorite = patch.favorite
                 node.last_successful_sync = datetime.now(timezone.utc)
                 self.db.commit()
-        finally:
-            provider.disconnect(conn)
+            result = {
+                "provider_node_id": node.provider_node_id,
+                "mode": "local_only",
+                "applied": {"favorite": patch.favorite} if patch.favorite is not None else {},
+                "supported": True,
+            }
+        else:
+            provider = self.registry.get(node.provider)
+            endpoint_row = node.endpoints[0] if node.endpoints else None
+            if endpoint_row is None:
+                raise ValueError("Node has no TCP endpoint")
+
+            conn = None
+            try:
+                conn = provider.connect(
+                    ProviderConnection(
+                        endpoint=endpoint_row.endpoint,
+                        host=endpoint_row.host,
+                        port=endpoint_row.port,
+                    )
+                )
+                result = provider.apply_config_patch(conn, node.provider_node_id, patch, dry_run=dry_run)
+
+                if not dry_run:
+                    if patch.short_name is not None:
+                        node.short_name = patch.short_name
+                    if patch.long_name is not None:
+                        node.long_name = patch.long_name
+                    if patch.role is not None:
+                        node.role = patch.role
+                    if patch.favorite is not None:
+                        node.favorite = patch.favorite
+                    if patch.latitude is not None:
+                        node.latitude = patch.latitude
+                    if patch.longitude is not None:
+                        node.longitude = patch.longitude
+                    if patch.altitude is not None:
+                        node.altitude = patch.altitude
+                    node.last_successful_sync = datetime.now(timezone.utc)
+                    self.db.commit()
+            finally:
+                provider.disconnect(conn)
 
         after = {
             "short_name": patch.short_name if patch.short_name is not None else node.short_name,

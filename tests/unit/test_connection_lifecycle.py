@@ -16,6 +16,7 @@ class _LifecycleProvider:
 
     def __init__(self) -> None:
         self.disconnect_calls = 0
+        self.connect_calls = 0
 
     def capabilities(self) -> NodeCapability:
         return NodeCapability(can_discover_over_tcp=True)
@@ -38,6 +39,7 @@ class _LifecycleProvider:
         return ProviderHealth(provider=ProviderType.MESHTASTIC, status="ok")
 
     def connect(self, endpoint):
+        self.connect_calls += 1
         return object()
 
     def disconnect(self, conn) -> None:
@@ -90,6 +92,38 @@ def test_operations_service_disconnects_after_patch(db) -> None:
     )
 
     assert provider.disconnect_calls == 1
+
+
+def test_operations_service_favorite_only_patch_is_local_only(db) -> None:
+    provider = _LifecycleProvider()
+    registry = ProviderRegistry()
+    registry._providers["meshtastic"] = provider
+
+    node = ManagedNodeModel(
+        provider="meshtastic",
+        provider_node_id="!fav-only",
+        favorite=False,
+        first_seen=datetime.now(timezone.utc),
+        last_seen=datetime.now(timezone.utc),
+        reachable=False,
+    )
+    db.add(node)
+    db.commit()
+
+    service = OperationsService(db, registry)
+    result = service.apply_patch(
+        node_id=node.id,
+        patch=ConfigPatch(favorite=True),
+        actor="tester",
+        source="test",
+        dry_run=False,
+    )
+
+    db.refresh(node)
+    assert node.favorite is True
+    assert result["mode"] == "local_only"
+    assert provider.connect_calls == 0
+    assert provider.disconnect_calls == 0
 
 
 def test_sync_service_disconnects_after_endpoint_sync(db) -> None:

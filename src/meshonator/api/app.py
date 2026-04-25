@@ -468,6 +468,37 @@ def _extract_zero_hop_candidates(raw_metadata: dict[str, Any], max_hops: int = 0
     return out
 
 
+def _filter_zero_hop_candidates(
+    raw_metadata: dict[str, Any],
+    *,
+    max_hops: int,
+    allowed_roles: set[str],
+) -> list[dict[str, Any]]:
+    candidates = _extract_zero_hop_candidates(raw_metadata, max_hops=max_hops)
+    if allowed_roles:
+        candidates = [item for item in candidates if str(item.get("role", "")).upper() in allowed_roles]
+    return candidates
+
+
+def _find_managed_nodes_for_candidates(
+    *,
+    db: Session,
+    provider: str,
+    candidates: list[dict[str, Any]],
+) -> list[ManagedNodeModel]:
+    candidate_ids = [item["id"] for item in candidates if isinstance(item.get("id"), str)]
+    if not candidate_ids:
+        return []
+    return list(
+        db.scalars(
+            select(ManagedNodeModel).where(
+                ManagedNodeModel.provider == provider,
+                ManagedNodeModel.provider_node_id.in_(candidate_ids),
+            )
+        ).all()
+    )
+
+
 def _channels_to_patch(channels: list[Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in channels:
@@ -1091,6 +1122,23 @@ def node_details_page(
         raise HTTPException(status_code=404, detail="Node not found")
     audits = list(db.scalars(select(AuditLogModel).where(AuditLogModel.node_id == node.id).order_by(AuditLogModel.created_at.desc()).limit(20)).all())
     zero_hop_candidates = _extract_zero_hop_candidates(node.raw_metadata or {}, max_hops=0)
+    managed_matches = _find_managed_nodes_for_candidates(
+        db=db,
+        provider=node.provider,
+        candidates=zero_hop_candidates,
+    )
+    managed_by_provider_id = {item.provider_node_id: item for item in managed_matches}
+    for candidate in zero_hop_candidates:
+        provider_node_id = candidate.get("id")
+        managed = managed_by_provider_id.get(provider_node_id) if isinstance(provider_node_id, str) else None
+        if managed is None:
+            candidate["managed_node_id"] = None
+            candidate["managed_short_name"] = None
+            candidate["managed_favorite"] = None
+        else:
+            candidate["managed_node_id"] = str(managed.id)
+            candidate["managed_short_name"] = managed.short_name
+            candidate["managed_favorite"] = managed.favorite
     current_local_config = node.raw_metadata.get("preferences", {}) if isinstance(node.raw_metadata, dict) else {}
     current_module_config = node.raw_metadata.get("modulePreferences", {}) if isinstance(node.raw_metadata, dict) else {}
     current_channels = node.raw_metadata.get("channels", []) if isinstance(node.raw_metadata, dict) else []
@@ -1338,22 +1386,20 @@ def ui_node_zero_hop_import(
         node = db.get(ManagedNodeModel, node_id)
         if node is None:
             return RedirectResponse(url=f"/nodes/{node_id}?error=Node+not+found", status_code=303)
-        candidates = _extract_zero_hop_candidates(node.raw_metadata or {}, max_hops=max_hops)
         allowed_roles = set(_normalize_roles(allowed_roles_text))
-        if allowed_roles:
-            candidates = [item for item in candidates if str(item.get("role", "")).upper() in allowed_roles]
-
+        candidates = _filter_zero_hop_candidates(
+            node.raw_metadata or {},
+            max_hops=max_hops,
+            allowed_roles=allowed_roles,
+        )
         candidate_ids = [item["id"] for item in candidates if isinstance(item.get("id"), str)]
         if not candidate_ids:
             return RedirectResponse(url=f"/nodes/{node_id}?error=No+matching+0-hop+nodes", status_code=303)
 
-        matched_nodes = list(
-            db.scalars(
-                select(ManagedNodeModel).where(
-                    ManagedNodeModel.provider == node.provider,
-                    ManagedNodeModel.provider_node_id.in_(candidate_ids),
-                )
-            ).all()
+        matched_nodes = _find_managed_nodes_for_candidates(
+            db=db,
+            provider=node.provider,
+            candidates=candidates,
         )
         if not matched_nodes:
             return RedirectResponse(
@@ -1393,6 +1439,80 @@ def ui_node_zero_hop_import(
         return RedirectResponse(url=f"/nodes/{node_id}?message={message}", status_code=303)
     except Exception as exc:
         error = quote_plus(f"0-hop import failed: {exc}")
+        return RedirectResponse(url=f"/nodes/{node_id}?error={error}", status_code=303)
+
+
+@app.post("/ui/nodes/{node_id}/zero-hop/favorites")
+def ui_node_zero_hop_favorites(
+    node_id: UUID,
+    allowed_roles_text: str = Form("ROUTER\nROUTER_LATE\nCLIENT_BASE"),
+    max_hops: int = Form(0),
+    dry_run: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        node = db.get(ManagedNodeModel, node_id)
+        if node is None:
+            return RedirectResponse(url=f"/nodes/{node_id}?error=Node+not+found", status_code=303)
+
+        allowed_roles = set(_normalize_roles(allowed_roles_text))
+        candidates = _filter_zero_hop_candidates(
+            node.raw_metadata or {},
+            max_hops=max_hops,
+            allowed_roles=allowed_roles,
+        )
+        matched_nodes = _find_managed_nodes_for_candidates(
+            db=db,
+            provider=node.provider,
+            candidates=candidates,
+        )
+        if not matched_nodes:
+            return RedirectResponse(
+                url=f"/nodes/{node_id}?error=No+managed+nodes+matched+the+0-hop+selection",
+                status_code=303,
+            )
+
+        job = JobsService(db).create(
+            job_type="multi_node_config_patch",
+            requested_by=user.username,
+            source="ui",
+            payload={
+                "node_ids": [str(item.id) for item in matched_nodes],
+                "dry_run": dry_run,
+                "base_patch": {
+                    "favorite": True,
+                    "local_config_patch": {},
+                    "module_config_patch": {},
+                    "channels_patch": [],
+                },
+                "clone": {},
+                "location_spread": {"enabled": False},
+            },
+        )
+        enqueue_multi_node_patch_job(job.id, registry)
+
+        AuditService(db).log(
+            actor=user.username,
+            source="ui",
+            action="node.zero_hop.favorite_all",
+            provider=node.provider,
+            node_id=node.id,
+            metadata={
+                "max_hops": max_hops,
+                "allowed_roles": sorted(allowed_roles),
+                "candidate_count": len(candidates),
+                "matched_managed_count": len(matched_nodes),
+                "dry_run": dry_run,
+                "job_id": str(job.id),
+            },
+        )
+        message = quote_plus(
+            f"Queued favorite sync for {len(matched_nodes)} managed nodes from 0-hop view. Job ID: {job.id}"
+        )
+        return RedirectResponse(url=f"/nodes/{node_id}?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"0-hop favorite sync failed: {exc}")
         return RedirectResponse(url=f"/nodes/{node_id}?error={error}", status_code=303)
 
 

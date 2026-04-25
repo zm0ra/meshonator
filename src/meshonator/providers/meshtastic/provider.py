@@ -105,6 +105,16 @@ class MeshtasticProvider(Provider):
         except Exception as exc:  # pragma: no cover
             raise ProviderError(f"Failed to connect to {endpoint.endpoint}: {exc}") from exc
 
+    def disconnect(self, conn: Any) -> None:
+        if conn is None:
+            return
+        close_fn = getattr(conn, "close", None)
+        if callable(close_fn):
+            try:
+                close_fn()
+            except Exception:
+                pass
+
     def fetch_nodes(self, conn: Any) -> list[ManagedNode]:
         now = datetime.now(timezone.utc)
         local_node = getattr(conn, "localNode", None)

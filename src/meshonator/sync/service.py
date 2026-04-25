@@ -29,18 +29,22 @@ class SyncService:
             raise ValueError("Endpoint not found")
 
         provider = self.registry.get(endpoint.provider_name)
-        conn = provider.connect(ProviderConnection(endpoint=endpoint.endpoint, host=endpoint.host, port=endpoint.port))
-        nodes = provider.fetch_nodes(conn)
-        saved = self.inventory.upsert_nodes(nodes, endpoint.endpoint, endpoint.host, endpoint.port, endpoint.source)
+        conn = None
+        try:
+            conn = provider.connect(ProviderConnection(endpoint=endpoint.endpoint, host=endpoint.host, port=endpoint.port))
+            nodes = provider.fetch_nodes(conn)
+            saved = self.inventory.upsert_nodes(nodes, endpoint.endpoint, endpoint.host, endpoint.port, endpoint.source)
 
-        snapshot_count = 0
-        if not quick:
-            for db_node in saved:
-                cfg = provider.fetch_config(conn, db_node.provider_node_id)
-                self.ops.save_config_snapshot(db_node.id, "provider_config", cfg)
-                self.db.add(NodeSnapshotModel(node_id=db_node.id, snapshot_type="full_sync", payload=cfg))
-                snapshot_count += 1
-            self.db.commit()
+            snapshot_count = 0
+            if not quick:
+                for db_node in saved:
+                    cfg = provider.fetch_config(conn, db_node.provider_node_id)
+                    self.ops.save_config_snapshot(db_node.id, "provider_config", cfg)
+                    self.db.add(NodeSnapshotModel(node_id=db_node.id, snapshot_type="full_sync", payload=cfg))
+                    snapshot_count += 1
+                self.db.commit()
+        finally:
+            provider.disconnect(conn)
 
         return {
             "endpoint": endpoint.endpoint,
@@ -82,16 +86,20 @@ class SyncService:
             raise ValueError("Node has no endpoint")
         endpoint = node.endpoints[0]
         provider = self.registry.get(node.provider)
-        conn = provider.connect(
-            ProviderConnection(endpoint=endpoint.endpoint, host=endpoint.host, port=endpoint.port)
-        )
-        nodes = provider.fetch_nodes(conn)
-        saved = self.inventory.upsert_nodes(nodes, endpoint.endpoint, endpoint.host, endpoint.port, endpoint.source)
-        if not quick:
-            cfg = provider.fetch_config(conn, node.provider_node_id)
-            self.ops.save_config_snapshot(node.id, "provider_config", cfg)
-            self.db.add(NodeSnapshotModel(node_id=node.id, snapshot_type="full_sync", payload=cfg))
-            self.db.commit()
+        conn = None
+        try:
+            conn = provider.connect(
+                ProviderConnection(endpoint=endpoint.endpoint, host=endpoint.host, port=endpoint.port)
+            )
+            nodes = provider.fetch_nodes(conn)
+            saved = self.inventory.upsert_nodes(nodes, endpoint.endpoint, endpoint.host, endpoint.port, endpoint.source)
+            if not quick:
+                cfg = provider.fetch_config(conn, node.provider_node_id)
+                self.ops.save_config_snapshot(node.id, "provider_config", cfg)
+                self.db.add(NodeSnapshotModel(node_id=node.id, snapshot_type="full_sync", payload=cfg))
+                self.db.commit()
+        finally:
+            provider.disconnect(conn)
         return {"node_id": str(node_pk), "saved_nodes": len(saved), "quick": quick}
 
     def node_details(self, node_id: str | UUID) -> ManagedNodeModel | None:

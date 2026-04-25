@@ -82,6 +82,18 @@ class MeshCoreProvider(Provider):
             raise ProviderError("meshcore_py.Client is unavailable")
         return client(endpoint.host, endpoint.port)
 
+    def disconnect(self, conn: Any) -> None:
+        if conn is None:
+            return
+        for method_name in ("close", "disconnect", "stop"):
+            fn = getattr(conn, method_name, None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:
+                    pass
+                break
+
     def fetch_nodes(self, conn: Any) -> list[ManagedNode]:
         contacts = []
         if hasattr(conn, "contacts"):

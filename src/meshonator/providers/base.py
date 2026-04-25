@@ -48,6 +48,10 @@ class Provider(ABC):
     def connect(self, endpoint: ProviderConnection) -> Any:
         raise NotImplementedError
 
+    def disconnect(self, conn: Any) -> None:
+        # Default no-op for providers that do not keep persistent sockets.
+        return None
+
     @abstractmethod
     def fetch_nodes(self, conn: Any) -> list[ManagedNode]:
         raise NotImplementedError

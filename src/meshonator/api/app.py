@@ -40,6 +40,14 @@ from meshonator.operations.service import OperationsService
 from meshonator.providers.registry import ProviderRegistry
 from meshonator.sync.service import SyncService
 
+try:
+    from google.protobuf.descriptor import FieldDescriptor
+    from meshtastic.protobuf import channel_pb2, localonly_pb2
+except Exception:  # pragma: no cover
+    FieldDescriptor = None  # type: ignore[assignment]
+    channel_pb2 = None  # type: ignore[assignment]
+    localonly_pb2 = None  # type: ignore[assignment]
+
 settings = get_settings()
 registry = ProviderRegistry()
 
@@ -223,6 +231,121 @@ def _channels_to_patch(channels: list[Any]) -> list[dict[str, Any]]:
             patch["role"] = item["role"]
         out.append(patch)
     return out
+
+
+def _get_nested(src: dict[str, Any], path: list[str]) -> Any:
+    current: Any = src
+    for segment in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(segment)
+    return current
+
+
+def _field_kind(field: Any) -> str:
+    if FieldDescriptor is None:
+        return "string"
+    if field.label == FieldDescriptor.LABEL_REPEATED:
+        return "json"
+    if field.type == FieldDescriptor.TYPE_MESSAGE:
+        return "message"
+    if field.type == FieldDescriptor.TYPE_ENUM:
+        return "enum"
+    if field.type == FieldDescriptor.TYPE_BOOL:
+        return "bool"
+    if field.type in {
+        FieldDescriptor.TYPE_INT32,
+        FieldDescriptor.TYPE_INT64,
+        FieldDescriptor.TYPE_UINT32,
+        FieldDescriptor.TYPE_UINT64,
+        FieldDescriptor.TYPE_SINT32,
+        FieldDescriptor.TYPE_SINT64,
+        FieldDescriptor.TYPE_FIXED32,
+        FieldDescriptor.TYPE_FIXED64,
+        FieldDescriptor.TYPE_SFIXED32,
+        FieldDescriptor.TYPE_SFIXED64,
+    }:
+        return "int"
+    if field.type in {FieldDescriptor.TYPE_FLOAT, FieldDescriptor.TYPE_DOUBLE}:
+        return "float"
+    if field.type == FieldDescriptor.TYPE_BYTES:
+        return "bytes"
+    return "string"
+
+
+def _descriptor_to_rows(descriptor: Any, current: dict[str, Any], prefix: list[str] | None = None) -> list[dict[str, Any]]:
+    if prefix is None:
+        prefix = []
+    rows: list[dict[str, Any]] = []
+    for field in descriptor.fields:
+        field_name = field.json_name
+        path = [*prefix, field_name]
+        kind = _field_kind(field)
+        value = _get_nested(current, path)
+        if kind == "message":
+            rows.extend(_descriptor_to_rows(field.message_type, current, path))
+            continue
+        row: dict[str, Any] = {
+            "path": ".".join(path),
+            "label": ".".join(path),
+            "kind": kind,
+            "value": value,
+        }
+        if kind == "enum":
+            row["options"] = [item.name for item in field.enum_type.values]
+            if isinstance(value, str):
+                row["value"] = value
+            elif value is None and row["options"]:
+                row["value"] = row["options"][0]
+        elif kind == "json":
+            row["value"] = json.dumps(value if value is not None else [], ensure_ascii=False)
+        rows.append(row)
+    dedup: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        dedup[row["path"]] = row
+    return [dedup[key] for key in sorted(dedup.keys())]
+
+
+def _build_structured_forms(
+    current_local_config: dict[str, Any],
+    current_module_config: dict[str, Any],
+    current_channels: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if localonly_pb2 is None or channel_pb2 is None:
+        return {"supported": False, "local_rows": [], "module_rows": [], "channel_forms": []}
+
+    local_rows = _descriptor_to_rows(localonly_pb2.LocalConfig.DESCRIPTOR, current_local_config or {})
+    module_rows = _descriptor_to_rows(localonly_pb2.LocalModuleConfig.DESCRIPTOR, current_module_config or {})
+    channel_forms = []
+    for channel in current_channels or []:
+        if not isinstance(channel, dict):
+            continue
+        index = channel.get("index")
+        if not isinstance(index, int):
+            continue
+        rows = _descriptor_to_rows(channel_pb2.Channel.DESCRIPTOR, channel, [])
+        channel_forms.append({"index": index, "rows": rows})
+    channel_forms.sort(key=lambda item: item["index"])
+    return {
+        "supported": True,
+        "local_rows": local_rows,
+        "module_rows": module_rows,
+        "channel_forms": channel_forms,
+    }
+
+
+def _coerce_structured_value(kind: str, raw: str) -> Any:
+    if kind == "bool":
+        return raw.strip().lower() in {"true", "1", "yes", "on"}
+    if kind == "int":
+        return int(raw.strip())
+    if kind == "float":
+        return float(raw.strip())
+    if kind == "json":
+        return json.loads(raw.strip() or "[]")
+    if kind == "bytes":
+        return raw.encode("utf-8")
+    return raw
 
 
 @app.on_event("startup")
@@ -429,6 +552,7 @@ def node_details_page(
     current_local_config = node.raw_metadata.get("preferences", {}) if isinstance(node.raw_metadata, dict) else {}
     current_module_config = node.raw_metadata.get("modulePreferences", {}) if isinstance(node.raw_metadata, dict) else {}
     current_channels = node.raw_metadata.get("channels", []) if isinstance(node.raw_metadata, dict) else []
+    structured_forms = _build_structured_forms(current_local_config, current_module_config, current_channels)
     return templates.TemplateResponse(
         request,
         "node_detail.html",
@@ -440,6 +564,7 @@ def node_details_page(
             "current_local_config": current_local_config,
             "current_module_config": current_module_config,
             "current_channels": current_channels,
+            "structured_forms": structured_forms,
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
         },
@@ -596,6 +721,68 @@ def ui_node_configure(
         return RedirectResponse(url=f"/nodes/{node_id}?error={error}", status_code=303)
 
 
+@app.post("/ui/nodes/{node_id}/configure-structured")
+async def ui_node_configure_structured(
+    node_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        form = await request.form()
+        paths = list(form.getlist("structured_path"))
+        scopes = list(form.getlist("structured_scope"))
+        kinds = list(form.getlist("structured_kind"))
+        values = list(form.getlist("structured_value"))
+        dry_run = str(form.get("dry_run", "")).lower() in {"1", "true", "on", "yes"}
+
+        if not (len(paths) == len(scopes) == len(kinds) == len(values)):
+            raise ValueError("Structured form payload is inconsistent")
+
+        local_patch: dict[str, Any] = {}
+        module_patch: dict[str, Any] = {}
+        channel_patches: dict[int, dict[str, Any]] = {}
+
+        for path, scope, kind, raw_value in zip(paths, scopes, kinds, values):
+            path = path.strip()
+            scope = scope.strip()
+            kind = kind.strip()
+            if not path or not scope:
+                continue
+            value = _coerce_structured_value(kind, raw_value)
+            segments = path.split(".")
+            if scope == "local":
+                _set_nested(local_patch, segments, value)
+            elif scope == "module":
+                _set_nested(module_patch, segments, value)
+            elif scope.startswith("channel:"):
+                idx = int(scope.split(":", 1)[1])
+                entry = channel_patches.setdefault(idx, {"index": idx})
+                _set_nested(entry, segments, value)
+
+        patch = ConfigPatch(
+            local_config_patch=local_patch,
+            module_config_patch=module_patch,
+            channels_patch=[channel_patches[index] for index in sorted(channel_patches.keys())],
+        )
+        job = JobsService(db).create(
+            job_type="node_config_patch",
+            requested_by=user.username,
+            source="ui",
+            payload={
+                "node_id": str(node_id),
+                "dry_run": dry_run,
+                "patch": patch.model_dump(),
+            },
+        )
+        enqueue_node_patch_job(job.id, registry)
+        message = quote_plus(f"Structured patch queued. Job ID: {job.id}")
+        return RedirectResponse(url=f"/nodes/{node_id}?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Structured patch failed: {exc}")
+        return RedirectResponse(url=f"/nodes/{node_id}?error={error}", status_code=303)
+
+
 @app.post("/ui/nodes/{node_id}/zero-hop/import")
 def ui_node_zero_hop_import(
     node_id: UUID,
@@ -674,12 +861,18 @@ def map_page(
     user: CurrentUser = Depends(require_session_user),
 ) -> HTMLResponse:
     markers = MapService(db).markers()
+    known_nodes = InventoryService(db).list_nodes()
+    mapped_ids = {item["id"] for item in markers}
+    without_location = [node for node in known_nodes if str(node.id) not in mapped_ids]
     return templates.TemplateResponse(
         request,
         "map.html",
         {
             "user": user,
             "markers": markers,
+            "known_nodes_count": len(known_nodes),
+            "mapped_nodes_count": len(markers),
+            "without_location": without_location,
             "map_default_lat": settings.map_default_lat,
             "map_default_lon": settings.map_default_lon,
             "map_default_zoom": settings.map_default_zoom,

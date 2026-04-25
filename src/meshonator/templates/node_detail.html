@@ -184,6 +184,110 @@
     <div><button type="submit">Apply Node Changes</button></div>
   </form>
 </section>
+{% if structured_forms.supported %}
+<section class="card">
+  <h2>Structured Config Editor</h2>
+  <p class="muted">Enum fields are rendered as dropdown lists. This editor covers full Local/Module/Channel configuration tree.</p>
+  <form method="post" action="/ui/nodes/{{ node.id }}/configure-structured" class="stack">
+    <h3>Local Config</h3>
+    <table>
+      <tr><th>Path</th><th>Value</th></tr>
+      {% for row in structured_forms.local_rows %}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td>
+          <input type="hidden" name="structured_scope" value="local" />
+          <input type="hidden" name="structured_path" value="{{ row.path }}" />
+          <input type="hidden" name="structured_kind" value="{{ row.kind }}" />
+          {% if row.kind == "enum" %}
+          <select name="structured_value">
+            {% for option in row.options %}
+            <option value="{{ option }}" {% if option == row.value %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+          {% elif row.kind == "bool" %}
+          <select name="structured_value">
+            <option value="true" {% if row.value %}selected{% endif %}>true</option>
+            <option value="false" {% if row.value is not sameas true %}selected{% endif %}>false</option>
+          </select>
+          {% elif row.kind == "json" %}
+          <textarea name="structured_value" rows="2">{{ row.value }}</textarea>
+          {% else %}
+          <input type="text" name="structured_value" value="{{ row.value if row.value is not none else '' }}" />
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    <h3>Module Config</h3>
+    <table>
+      <tr><th>Path</th><th>Value</th></tr>
+      {% for row in structured_forms.module_rows %}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td>
+          <input type="hidden" name="structured_scope" value="module" />
+          <input type="hidden" name="structured_path" value="{{ row.path }}" />
+          <input type="hidden" name="structured_kind" value="{{ row.kind }}" />
+          {% if row.kind == "enum" %}
+          <select name="structured_value">
+            {% for option in row.options %}
+            <option value="{{ option }}" {% if option == row.value %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+          {% elif row.kind == "bool" %}
+          <select name="structured_value">
+            <option value="true" {% if row.value %}selected{% endif %}>true</option>
+            <option value="false" {% if row.value is not sameas true %}selected{% endif %}>false</option>
+          </select>
+          {% elif row.kind == "json" %}
+          <textarea name="structured_value" rows="2">{{ row.value }}</textarea>
+          {% else %}
+          <input type="text" name="structured_value" value="{{ row.value if row.value is not none else '' }}" />
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% for channel in structured_forms.channel_forms %}
+    <h3>Channel {{ channel.index }}</h3>
+    <table>
+      <tr><th>Path</th><th>Value</th></tr>
+      {% for row in channel.rows %}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td>
+          <input type="hidden" name="structured_scope" value="channel:{{ channel.index }}" />
+          <input type="hidden" name="structured_path" value="{{ row.path }}" />
+          <input type="hidden" name="structured_kind" value="{{ row.kind }}" />
+          {% if row.kind == "enum" %}
+          <select name="structured_value">
+            {% for option in row.options %}
+            <option value="{{ option }}" {% if option == row.value %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+          {% elif row.kind == "bool" %}
+          <select name="structured_value">
+            <option value="true" {% if row.value %}selected{% endif %}>true</option>
+            <option value="false" {% if row.value is not sameas true %}selected{% endif %}>false</option>
+          </select>
+          {% elif row.kind == "json" %}
+          <textarea name="structured_value" rows="2">{{ row.value }}</textarea>
+          {% else %}
+          <input type="text" name="structured_value" value="{{ row.value if row.value is not none else '' }}" />
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endfor %}
+    <label>Dry run
+      <input type="checkbox" name="dry_run" value="true" />
+    </label>
+    <button type="submit">Apply Structured Configuration</button>
+  </form>
+</section>
+{% endif %}
 <section class="card">
   <h2>0-Hop Neighbors</h2>
   <p class="muted">Candidates are read from this node's current mesh database (`nodesInMesh`) and filtered by hop distance.</p>

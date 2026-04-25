@@ -1,6 +1,27 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card"><h1>Fleet Map</h1><p>Inventory map.</p><div id="fleetMap" style="height: 600px"></div></section>
+<section class="card">
+  <h1>Fleet Map</h1>
+  <p>Known stations in Meshonator: {{ known_nodes_count }} | with location: {{ mapped_nodes_count }} | without location: {{ without_location|length }}</p>
+  <div id="fleetMap" style="height: 600px"></div>
+</section>
+{% if without_location %}
+<section class="card">
+  <h2>Known Stations Without Location</h2>
+  <table>
+    <tr><th>Provider</th><th>Node</th><th>Name</th><th>Role</th><th>Last Seen</th></tr>
+    {% for n in without_location %}
+    <tr>
+      <td>{{ n.provider }}</td>
+      <td><a href="/nodes/{{ n.id }}">{{ n.provider_node_id }}</a></td>
+      <td>{{ n.short_name }} / {{ n.long_name }}</td>
+      <td>{{ n.role }}</td>
+      <td>{{ n.last_seen }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
 <script>
   const map = L.map('fleetMap').setView([{{ map_default_lat }}, {{ map_default_lon }}], {{ map_default_zoom }});
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -9,7 +30,7 @@
   markers.forEach(m => {
     const color = m.reachable ? '#1f7a1f' : '#a3462c';
     const marker = L.circleMarker([m.lat, m.lon], { radius: m.favorite ? 9 : 7, color }).addTo(map);
-    marker.bindPopup(`<b>${m.name}</b><br/>${m.provider}<br/>${m.reachable ? 'online' : 'offline'}<br/>last seen: ${m.last_seen}`);
+    marker.bindPopup(`<b>${m.name}</b><br/>${m.provider} / ${m.provider_node_id}<br/>${m.reachable ? 'online' : 'offline'}<br/>last seen: ${m.last_seen}`);
     bounds.push([m.lat, m.lon]);
   });
   if (bounds.length) map.fitBounds(bounds, { padding: [20,20] });

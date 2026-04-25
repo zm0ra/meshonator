@@ -848,6 +848,7 @@ def ui_nodes_compare_sync(
     sync_local_config: bool = Form(True),
     sync_module_config: bool = Form(True),
     sync_channels: bool = Form(True),
+    sync_location: bool = Form(False),
     dry_run: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
@@ -856,8 +857,23 @@ def ui_nodes_compare_sync(
         node_ids = _parse_uuid_list(target_node_ids)
         if not node_ids:
             return RedirectResponse(url="/nodes?error=Select+at+least+one+target+node", status_code=303)
-        if not any([sync_local_config, sync_module_config, sync_channels]):
+        if not any([sync_local_config, sync_module_config, sync_channels, sync_location]):
             return RedirectResponse(url="/nodes?error=Select+at+least+one+section+to+synchronize", status_code=303)
+        source_node = db.get(ManagedNodeModel, source_node_id)
+        if source_node is None:
+            return RedirectResponse(url="/nodes?error=Source+node+not+found", status_code=303)
+        base_patch: dict[str, Any] = {
+            "local_config_patch": {},
+            "module_config_patch": {},
+            "channels_patch": [],
+        }
+        if sync_location:
+            if source_node.latitude is None or source_node.longitude is None:
+                return RedirectResponse(url="/nodes?error=Source+node+has+no+known+location", status_code=303)
+            base_patch["latitude"] = source_node.latitude
+            base_patch["longitude"] = source_node.longitude
+            if source_node.altitude is not None:
+                base_patch["altitude"] = source_node.altitude
 
         job = JobsService(db).create(
             job_type="multi_node_config_patch",
@@ -866,11 +882,7 @@ def ui_nodes_compare_sync(
             payload={
                 "node_ids": [str(node_id) for node_id in node_ids],
                 "dry_run": dry_run,
-                "base_patch": {
-                    "local_config_patch": {},
-                    "module_config_patch": {},
-                    "channels_patch": [],
-                },
+                "base_patch": base_patch,
                 "clone": {
                     "source_node_id": str(source_node_id),
                     "include_local_config": sync_local_config,

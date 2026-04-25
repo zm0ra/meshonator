@@ -162,12 +162,12 @@ def _normalize_channels_for_compare(channels: Any) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if not isinstance(channels, list):
         return out
-    for item in channels:
+    for position, item in enumerate(channels):
         if not isinstance(item, dict):
             continue
         index = item.get("index")
         if not isinstance(index, int):
-            continue
+            index = position
         module_settings = item.get("moduleSettings")
         if not isinstance(module_settings, dict):
             module_settings = item.get("module_settings")

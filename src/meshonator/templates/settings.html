@@ -1,5 +1,164 @@
 {% extends "base.html" %}
 {% block content %}
+{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
+{% set ds = default_settings if default_settings is defined and default_settings else {} %}
+{% set local = ds.get("local_config_patch", {}) %}
+{% set module = ds.get("module_config_patch", {}) %}
+{% set channels = ds.get("channels_patch", []) %}
+{% set primary = channels[0] if channels else {} %}
+{% set primary_settings = primary.get("settings", {}) if primary else {} %}
+<section class="card">
+  <h1>Default Settings</h1>
+  <p class="muted">Saved values are used as a reusable baseline for Meshtastic nodes.</p>
+  <form method="post" action="/ui/settings/defaults/save" class="grid two">
+    <h2>MQTT</h2>
+    <label>Server
+      <input type="text" name="mqtt_address" value="{{ module.get('mqtt', {}).get('address', '') }}" placeholder="172.30.250.10" />
+    </label>
+    <label>User
+      <input type="text" name="mqtt_username" value="{{ module.get('mqtt', {}).get('username', '') }}" placeholder="mt" />
+    </label>
+    <label>Password
+      <input type="text" name="mqtt_password" value="{{ module.get('mqtt', {}).get('password', '') }}" placeholder="mt" />
+    </label>
+    <label>Topic (root)
+      <input type="text" name="mqtt_root" value="{{ module.get('mqtt', {}).get('root', '') }}" placeholder="msh/EU_868" />
+    </label>
+    <label>MQTT enabled
+      <select name="mqtt_enabled">
+        <option value="keep">Keep</option>
+        <option value="true" {% if module.get('mqtt', {}).get('enabled') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if module.get('mqtt', {}).get('enabled') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+    <label>MQTT encryption enabled
+      <select name="mqtt_encryption_enabled">
+        <option value="keep">Keep</option>
+        <option value="true" {% if module.get('mqtt', {}).get('encryptionEnabled') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if module.get('mqtt', {}).get('encryptionEnabled') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+    <label>MQTT JSON enabled
+      <select name="mqtt_json_enabled">
+        <option value="keep">Keep</option>
+        <option value="true" {% if module.get('mqtt', {}).get('jsonEnabled') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if module.get('mqtt', {}).get('jsonEnabled') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+    <label>MQTT map reporting enabled
+      <select name="mqtt_map_reporting_enabled">
+        <option value="keep">Keep</option>
+        <option value="true" {% if module.get('mqtt', {}).get('mapReportingEnabled') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if module.get('mqtt', {}).get('mapReportingEnabled') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+
+    <h2>Primary Channel</h2>
+    <label>uplinkEnabled
+      <select name="primary_uplink_enabled">
+        <option value="keep">Keep</option>
+        <option value="true" {% if primary_settings.get('uplinkEnabled') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if primary_settings.get('uplinkEnabled') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+    <label>downlinkEnabled
+      <select name="primary_downlink_enabled">
+        <option value="keep">Keep</option>
+        <option value="true" {% if primary_settings.get('downlinkEnabled') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if primary_settings.get('downlinkEnabled') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+
+    <h2>LoRa</h2>
+    <label>Hop limit
+      <input type="number" min="0" name="lora_hop_limit" value="{{ local.get('lora', {}).get('hopLimit', '') }}" placeholder="7" />
+    </label>
+    <label>TX power
+      <input type="number" min="0" name="lora_tx_power" value="{{ local.get('lora', {}).get('txPower', '') }}" placeholder="27" />
+    </label>
+    <label>Modem preset
+      <input type="text" name="lora_modem_preset" value="{{ local.get('lora', {}).get('modemPreset', '') }}" placeholder="MEDIUM_FAST" />
+    </label>
+    <label>Region
+      <input type="text" name="lora_region" value="{{ local.get('lora', {}).get('region', '') }}" placeholder="EU_868" />
+    </label>
+    <label>TX enabled
+      <select name="lora_tx_enabled">
+        <option value="keep">Keep</option>
+        <option value="true" {% if local.get('lora', {}).get('txEnabled') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if local.get('lora', {}).get('txEnabled') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+    <label>usePreset
+      <select name="lora_use_preset">
+        <option value="keep">Keep</option>
+        <option value="true" {% if local.get('lora', {}).get('usePreset') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if local.get('lora', {}).get('usePreset') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+    <label>configOkToMqtt
+      <select name="lora_config_ok_to_mqtt">
+        <option value="keep">Keep</option>
+        <option value="true" {% if local.get('lora', {}).get('configOkToMqtt') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if local.get('lora', {}).get('configOkToMqtt') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+
+    <h2>Network</h2>
+    <label>syslog (rsyslogServer)
+      <input type="text" name="network_rsyslog_server" value="{{ local.get('network', {}).get('rsyslogServer', '') }}" placeholder="172.30.103.2" />
+    </label>
+    <label>ntp (ntpServer)
+      <input type="text" name="network_ntp_server" value="{{ local.get('network', {}).get('ntpServer', '') }}" placeholder="meshtastic.pool.ntp.org" />
+    </label>
+
+    <h2>Telemetry</h2>
+    <label>deviceUpdateInterval
+      <input type="number" min="0" name="telemetry_device_update_interval" value="{{ module.get('telemetry', {}).get('deviceUpdateInterval', '') }}" placeholder="2147483647" />
+    </label>
+
+    <h2>Position</h2>
+    <label>broadcastSmartMinimumDistance
+      <input type="number" min="0" name="position_broadcast_smart_minimum_distance" value="{{ local.get('position', {}).get('broadcastSmartMinimumDistance', '') }}" placeholder="100" />
+    </label>
+    <label>broadcastSmartMinimumIntervalSecs
+      <input type="number" min="0" name="position_broadcast_smart_minimum_interval_secs" value="{{ local.get('position', {}).get('broadcastSmartMinimumIntervalSecs', '') }}" placeholder="30" />
+    </label>
+    <label>fixedPosition
+      <select name="position_fixed_position">
+        <option value="keep">Keep</option>
+        <option value="true" {% if local.get('position', {}).get('fixedPosition') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if local.get('position', {}).get('fixedPosition') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+    <label>gpsMode
+      <input type="text" name="position_gps_mode" value="{{ local.get('position', {}).get('gpsMode', '') }}" placeholder="ENABLED" />
+    </label>
+    <label>gpsUpdateInterval
+      <input type="number" min="0" name="position_gps_update_interval" value="{{ local.get('position', {}).get('gpsUpdateInterval', '') }}" placeholder="86400" />
+    </label>
+    <label>positionBroadcastSecs
+      <input type="number" min="0" name="position_broadcast_secs" value="{{ local.get('position', {}).get('positionBroadcastSecs', '') }}" placeholder="43200" />
+    </label>
+    <label>positionBroadcastSmartEnabled
+      <select name="position_broadcast_smart_enabled">
+        <option value="keep">Keep</option>
+        <option value="true" {% if local.get('position', {}).get('positionBroadcastSmartEnabled') is sameas true %}selected{% endif %}>True</option>
+        <option value="false" {% if local.get('position', {}).get('positionBroadcastSmartEnabled') is sameas false %}selected{% endif %}>False</option>
+      </select>
+    </label>
+    <label>positionFlags
+      <input type="number" min="0" name="position_flags" value="{{ local.get('position', {}).get('positionFlags', '') }}" placeholder="3" />
+    </label>
+
+    <div><button type="submit">Save Default Settings</button></div>
+  </form>
+  <form method="post" action="/ui/settings/defaults/apply" class="stack mt-1">
+    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+    <button type="submit">Queue Apply Default Settings To All Managed Meshtastic Nodes</button>
+  </form>
+</section>
 <section class="card">
   <h1>Settings & Integrations</h1>
   <table>

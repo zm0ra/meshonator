@@ -26,6 +26,7 @@ from meshonator.db.models import (
     JobResultModel,
     ManagedNodeModel,
     NodeGroupModel,
+    ProviderModel,
     ProviderEndpointModel,
 )
 from meshonator.db.session import engine, get_db
@@ -429,6 +430,145 @@ def _build_fleet_baseline_patch(
         channels_patch.append(row)
 
     return local_patch, module_patch, channels_patch
+
+
+def _build_meshtastic_default_settings_patch(
+    *,
+    mqtt_address: str,
+    mqtt_username: str,
+    mqtt_password: str,
+    mqtt_root: str,
+    mqtt_enabled: str,
+    mqtt_encryption_enabled: str,
+    mqtt_json_enabled: str,
+    mqtt_map_reporting_enabled: str,
+    primary_uplink_enabled: str,
+    primary_downlink_enabled: str,
+    lora_hop_limit: str,
+    lora_tx_power: str,
+    lora_modem_preset: str,
+    lora_region: str,
+    lora_tx_enabled: str,
+    lora_use_preset: str,
+    lora_config_ok_to_mqtt: str,
+    network_rsyslog_server: str,
+    network_ntp_server: str,
+    telemetry_device_update_interval: str,
+    position_broadcast_smart_minimum_distance: str,
+    position_broadcast_smart_minimum_interval_secs: str,
+    position_fixed_position: str,
+    position_gps_mode: str,
+    position_gps_update_interval: str,
+    position_broadcast_secs: str,
+    position_broadcast_smart_enabled: str,
+    position_flags: str,
+) -> dict[str, Any]:
+    local_patch: dict[str, Any] = {}
+    module_patch: dict[str, Any] = {}
+    channels_patch: list[dict[str, Any]] = []
+
+    mqtt_patch: dict[str, Any] = {}
+    for key, raw in {
+        "address": mqtt_address,
+        "username": mqtt_username,
+        "password": mqtt_password,
+        "root": mqtt_root,
+    }.items():
+        if value := _parse_optional_text(raw):
+            mqtt_patch[key] = value
+    for key, raw in {
+        "enabled": mqtt_enabled,
+        "encryptionEnabled": mqtt_encryption_enabled,
+        "jsonEnabled": mqtt_json_enabled,
+        "mapReportingEnabled": mqtt_map_reporting_enabled,
+    }.items():
+        value = _parse_optional_bool(raw)
+        if value is not None:
+            mqtt_patch[key] = value
+    if mqtt_patch:
+        module_patch["mqtt"] = mqtt_patch
+
+    channel_settings_patch: dict[str, Any] = {}
+    for key, raw in {
+        "uplinkEnabled": primary_uplink_enabled,
+        "downlinkEnabled": primary_downlink_enabled,
+    }.items():
+        value = _parse_optional_bool(raw)
+        if value is not None:
+            channel_settings_patch[key] = value
+    if channel_settings_patch:
+        channels_patch.append({"index": 0, "settings": channel_settings_patch})
+
+    lora_patch: dict[str, Any] = {}
+    value = _parse_optional_int(lora_hop_limit)
+    if value is not None:
+        lora_patch["hopLimit"] = value
+    value = _parse_optional_int(lora_tx_power)
+    if value is not None:
+        lora_patch["txPower"] = value
+    if value := _parse_optional_text(lora_modem_preset):
+        lora_patch["modemPreset"] = value.upper()
+    if value := _parse_optional_text(lora_region):
+        lora_patch["region"] = value.upper()
+    value = _parse_optional_bool(lora_tx_enabled)
+    if value is not None:
+        lora_patch["txEnabled"] = value
+    value = _parse_optional_bool(lora_use_preset)
+    if value is not None:
+        lora_patch["usePreset"] = value
+    value = _parse_optional_bool(lora_config_ok_to_mqtt)
+    if value is not None:
+        lora_patch["configOkToMqtt"] = value
+    if lora_patch:
+        local_patch["lora"] = lora_patch
+
+    network_patch: dict[str, Any] = {}
+    if value := _parse_optional_text(network_rsyslog_server):
+        network_patch["rsyslogServer"] = value
+    if value := _parse_optional_text(network_ntp_server):
+        network_patch["ntpServer"] = value
+    if network_patch:
+        local_patch["network"] = network_patch
+
+    telemetry_patch: dict[str, Any] = {}
+    value = _parse_optional_int(telemetry_device_update_interval)
+    if value is not None:
+        telemetry_patch["deviceUpdateInterval"] = value
+    if telemetry_patch:
+        module_patch["telemetry"] = telemetry_patch
+
+    position_patch: dict[str, Any] = {}
+    value = _parse_optional_int(position_broadcast_smart_minimum_distance)
+    if value is not None:
+        position_patch["broadcastSmartMinimumDistance"] = value
+    value = _parse_optional_int(position_broadcast_smart_minimum_interval_secs)
+    if value is not None:
+        position_patch["broadcastSmartMinimumIntervalSecs"] = value
+    value = _parse_optional_bool(position_fixed_position)
+    if value is not None:
+        position_patch["fixedPosition"] = value
+    if value := _parse_optional_text(position_gps_mode):
+        position_patch["gpsMode"] = value.upper()
+    value = _parse_optional_int(position_gps_update_interval)
+    if value is not None:
+        position_patch["gpsUpdateInterval"] = value
+    value = _parse_optional_int(position_broadcast_secs)
+    if value is not None:
+        position_patch["positionBroadcastSecs"] = value
+    value = _parse_optional_bool(position_broadcast_smart_enabled)
+    if value is not None:
+        position_patch["positionBroadcastSmartEnabled"] = value
+    value = _parse_optional_int(position_flags)
+    if value is not None:
+        position_patch["positionFlags"] = value
+    if position_patch:
+        local_patch["position"] = position_patch
+
+    return {
+        "local_config_patch": local_patch,
+        "module_config_patch": module_patch,
+        "channels_patch": channels_patch,
+    }
 
 
 def _normalize_roles(raw: str) -> list[str]:
@@ -1813,6 +1953,7 @@ def audit_page(
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(
     request: Request,
+    db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_session_user),
 ) -> HTMLResponse:
     providers = [
@@ -1825,7 +1966,152 @@ def settings_page(
         }
         for p in registry.all()
     ]
-    return templates.TemplateResponse(request, "settings.html", {"user": user, "providers": providers})
+    provider_row = db.scalar(select(ProviderModel).where(ProviderModel.name == "meshtastic"))
+    default_settings = {}
+    if provider_row and isinstance(provider_row.config, dict):
+        payload = provider_row.config.get("default_settings")
+        if isinstance(payload, dict):
+            default_settings = payload
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            "user": user,
+            "providers": providers,
+            "default_settings": default_settings,
+            "ui_message": request.query_params.get("message"),
+            "ui_error": request.query_params.get("error"),
+        },
+    )
+
+
+@app.post("/ui/settings/defaults/save")
+def ui_settings_defaults_save(
+    mqtt_address: str = Form(""),
+    mqtt_username: str = Form(""),
+    mqtt_password: str = Form(""),
+    mqtt_root: str = Form(""),
+    mqtt_enabled: str = Form("keep"),
+    mqtt_encryption_enabled: str = Form("keep"),
+    mqtt_json_enabled: str = Form("keep"),
+    mqtt_map_reporting_enabled: str = Form("keep"),
+    primary_uplink_enabled: str = Form("keep"),
+    primary_downlink_enabled: str = Form("keep"),
+    lora_hop_limit: str = Form(""),
+    lora_tx_power: str = Form(""),
+    lora_modem_preset: str = Form(""),
+    lora_region: str = Form(""),
+    lora_tx_enabled: str = Form("keep"),
+    lora_use_preset: str = Form("keep"),
+    lora_config_ok_to_mqtt: str = Form("keep"),
+    network_rsyslog_server: str = Form(""),
+    network_ntp_server: str = Form(""),
+    telemetry_device_update_interval: str = Form(""),
+    position_broadcast_smart_minimum_distance: str = Form(""),
+    position_broadcast_smart_minimum_interval_secs: str = Form(""),
+    position_fixed_position: str = Form("keep"),
+    position_gps_mode: str = Form(""),
+    position_gps_update_interval: str = Form(""),
+    position_broadcast_secs: str = Form(""),
+    position_broadcast_smart_enabled: str = Form("keep"),
+    position_flags: str = Form(""),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        default_settings = _build_meshtastic_default_settings_patch(
+            mqtt_address=mqtt_address,
+            mqtt_username=mqtt_username,
+            mqtt_password=mqtt_password,
+            mqtt_root=mqtt_root,
+            mqtt_enabled=mqtt_enabled,
+            mqtt_encryption_enabled=mqtt_encryption_enabled,
+            mqtt_json_enabled=mqtt_json_enabled,
+            mqtt_map_reporting_enabled=mqtt_map_reporting_enabled,
+            primary_uplink_enabled=primary_uplink_enabled,
+            primary_downlink_enabled=primary_downlink_enabled,
+            lora_hop_limit=lora_hop_limit,
+            lora_tx_power=lora_tx_power,
+            lora_modem_preset=lora_modem_preset,
+            lora_region=lora_region,
+            lora_tx_enabled=lora_tx_enabled,
+            lora_use_preset=lora_use_preset,
+            lora_config_ok_to_mqtt=lora_config_ok_to_mqtt,
+            network_rsyslog_server=network_rsyslog_server,
+            network_ntp_server=network_ntp_server,
+            telemetry_device_update_interval=telemetry_device_update_interval,
+            position_broadcast_smart_minimum_distance=position_broadcast_smart_minimum_distance,
+            position_broadcast_smart_minimum_interval_secs=position_broadcast_smart_minimum_interval_secs,
+            position_fixed_position=position_fixed_position,
+            position_gps_mode=position_gps_mode,
+            position_gps_update_interval=position_gps_update_interval,
+            position_broadcast_secs=position_broadcast_secs,
+            position_broadcast_smart_enabled=position_broadcast_smart_enabled,
+            position_flags=position_flags,
+        )
+
+        provider_row = db.scalar(select(ProviderModel).where(ProviderModel.name == "meshtastic"))
+        if provider_row is None:
+            provider_row = ProviderModel(name="meshtastic", enabled=True, config={})
+            db.add(provider_row)
+            db.flush()
+        config = dict(provider_row.config) if isinstance(provider_row.config, dict) else {}
+        config["default_settings"] = default_settings
+        provider_row.config = config
+        db.commit()
+
+        AuditService(db).log(
+            actor=user.username,
+            source="ui",
+            action="settings.defaults.save",
+            provider="meshtastic",
+            metadata={"default_settings": default_settings},
+        )
+        message = quote_plus("Default settings saved")
+        return RedirectResponse(url=f"/settings?message={message}", status_code=303)
+    except Exception as exc:
+        db.rollback()
+        error = quote_plus(f"Failed to save default settings: {exc}")
+        return RedirectResponse(url=f"/settings?error={error}", status_code=303)
+
+
+@app.post("/ui/settings/defaults/apply")
+def ui_settings_defaults_apply(
+    dry_run: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        provider_row = db.scalar(select(ProviderModel).where(ProviderModel.name == "meshtastic"))
+        if provider_row is None or not isinstance(provider_row.config, dict):
+            return RedirectResponse(url="/settings?error=No+saved+default+settings", status_code=303)
+        default_settings = provider_row.config.get("default_settings")
+        if not isinstance(default_settings, dict):
+            return RedirectResponse(url="/settings?error=No+saved+default+settings", status_code=303)
+
+        nodes = InventoryService(db).list_nodes(provider="meshtastic")
+        node_ids = [str(node.id) for node in nodes if node.id is not None]
+        if not node_ids:
+            return RedirectResponse(url="/settings?error=No+managed+Meshtastic+nodes+found", status_code=303)
+
+        job = JobsService(db).create(
+            job_type="multi_node_config_patch",
+            requested_by=user.username,
+            source="ui",
+            payload={
+                "node_ids": node_ids,
+                "dry_run": dry_run,
+                "base_patch": default_settings,
+                "clone": {},
+                "location_spread": {"enabled": False},
+            },
+        )
+        enqueue_multi_node_patch_job(job.id, registry)
+        message = quote_plus(f"Default settings queued for {len(node_ids)} nodes. Job ID: {job.id}")
+        return RedirectResponse(url=f"/settings?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Failed to queue default settings: {exc}")
+        return RedirectResponse(url=f"/settings?error={error}", status_code=303)
 
 
 @app.post("/api/discovery/scan")

@@ -3,7 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from meshonator.api.app import _compare_node_configs, _is_alignment_compare_path, _is_ignored_compare_path
+from meshonator.api.app import (
+    _compare_node_configs,
+    _is_alignment_compare_path,
+    _is_ignored_compare_path,
+    _is_presence_only_alignment_diff,
+)
 from meshonator.db.models import ManagedNodeModel
 
 
@@ -94,3 +99,15 @@ def test_compare_path_helpers_for_alignment_and_ignored_paths() -> None:
     assert _is_ignored_compare_path("local_config.security.privateKey") is True
     assert _is_ignored_compare_path("module_config.ambientLighting.green") is True
     assert _is_ignored_compare_path("module_config.telemetry.deviceUpdateInterval") is False
+
+
+def test_presence_only_alignment_diff_helper() -> None:
+    assert _is_presence_only_alignment_diff(
+        {"path": "local_config.lora.bandwidth", "source": None, "target": 250}
+    ) is True
+    assert _is_presence_only_alignment_diff(
+        {"path": "local_config.lora.hopLimit", "source": 7, "target": 3}
+    ) is False
+    assert _is_presence_only_alignment_diff(
+        {"path": "local_config.display.screenOnSecs", "source": None, "target": 600}
+    ) is False

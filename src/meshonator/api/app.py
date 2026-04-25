@@ -758,6 +758,15 @@ def _is_ignored_compare_path(path: str) -> bool:
     return path.startswith("local_config.security.") or path.startswith("module_config.ambientLighting.")
 
 
+def _is_presence_only_alignment_diff(diff: dict[str, Any]) -> bool:
+    path = diff.get("path")
+    if not isinstance(path, str) or not _is_alignment_compare_path(path):
+        return False
+    source = diff.get("source")
+    target = diff.get("target")
+    return (source is None and target is not None) or (source is not None and target is None)
+
+
 def _field_kind(field: Any) -> str:
     if FieldDescriptor is None:
         return "string"
@@ -1125,6 +1134,8 @@ def ui_nodes_compare(
             if _is_ignored_compare_path(path):
                 continue
             if use_alignment_profile and not _is_alignment_compare_path(path):
+                continue
+            if use_alignment_profile and _is_presence_only_alignment_diff(item):
                 continue
             filtered.append(item)
         row["diffs"] = filtered

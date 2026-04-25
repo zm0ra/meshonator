@@ -4,8 +4,43 @@
 {% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
 <section class="card">
+  <h1>Nodes</h1>
+  <p class="muted">
+    <button type="button" onclick="toggleAllNodeSelection(true)">Select all</button>
+    <button type="button" onclick="toggleAllNodeSelection(false)">Clear</button>
+  </p>
+  <table>
+    <tr>
+      <th>Select</th><th>Provider</th><th>Node ID</th><th>Name</th><th>IP</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>
+    </tr>
+    {% for n in nodes %}
+    {% set primary_ep = (n.endpoints | selectattr('is_primary') | list | first) %}
+    {% set fallback_ep = (n.endpoints | list | first) %}
+    <tr>
+      <td><input type="checkbox" form="batch-config-form" name="selected_node_ids" value="{{ n.id }}" class="node-selector" /></td>
+      <td>{{ n.provider }}</td>
+      <td>
+        <a href="/nodes/{{ n.id }}">{{ n.short_name or n.provider_node_id }}</a>
+        {% if n.short_name and n.provider_node_id %}
+        <div><small>{{ n.provider_node_id }}</small></div>
+        {% endif %}
+      </td>
+      <td>{{ n.short_name }} / {{ n.long_name }}</td>
+      <td>{{ (primary_ep or fallback_ep).host if (primary_ep or fallback_ep) else '-' }}</td>
+      <td>{{ n.firmware_version }}</td>
+      <td>{{ n.hardware_model }}</td>
+      <td>{{ n.role }}</td>
+      <td>{{ 'yes' if n.favorite else 'no' }}</td>
+      <td>{{ n.latitude }}, {{ n.longitude }}</td>
+      <td>{{ n.last_seen }}</td>
+      <td>{{ 'online' if n.reachable else 'offline' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+<section class="card">
   <h1>Batch Configure Nodes</h1>
-  <p class="muted">Select nodes in the table below, then queue one shared configuration job.</p>
+  <p class="muted">Select nodes in the table above, then queue one shared configuration job.</p>
   <form method="post" action="/ui/nodes/batch-configure" class="stack" id="batch-config-form">
     <fieldset>
       <legend>Clone from source node</legend>
@@ -67,42 +102,6 @@
     <label><input type="checkbox" name="dry_run" value="true" checked /> Dry run</label>
     <button type="submit">Queue Batch Node Changes</button>
   </form>
-</section>
-
-<section class="card">
-  <h1>Nodes</h1>
-  <p class="muted">
-    <button type="button" onclick="toggleAllNodeSelection(true)">Select all</button>
-    <button type="button" onclick="toggleAllNodeSelection(false)">Clear</button>
-  </p>
-  <table>
-    <tr>
-      <th>Select</th><th>Provider</th><th>Node ID</th><th>Name</th><th>IP</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>
-    </tr>
-    {% for n in nodes %}
-    {% set primary_ep = (n.endpoints | selectattr('is_primary') | list | first) %}
-    {% set fallback_ep = (n.endpoints | list | first) %}
-    <tr>
-      <td><input type="checkbox" form="batch-config-form" name="selected_node_ids" value="{{ n.id }}" class="node-selector" /></td>
-      <td>{{ n.provider }}</td>
-      <td>
-        <a href="/nodes/{{ n.id }}">{{ n.short_name or n.provider_node_id }}</a>
-        {% if n.short_name and n.provider_node_id %}
-        <div><small>{{ n.provider_node_id }}</small></div>
-        {% endif %}
-      </td>
-      <td>{{ n.short_name }} / {{ n.long_name }}</td>
-      <td>{{ (primary_ep or fallback_ep).host if (primary_ep or fallback_ep) else '-' }}</td>
-      <td>{{ n.firmware_version }}</td>
-      <td>{{ n.hardware_model }}</td>
-      <td>{{ n.role }}</td>
-      <td>{{ 'yes' if n.favorite else 'no' }}</td>
-      <td>{{ n.latitude }}, {{ n.longitude }}</td>
-      <td>{{ n.last_seen }}</td>
-      <td>{{ 'online' if n.reachable else 'offline' }}</td>
-    </tr>
-    {% endfor %}
-  </table>
 </section>
 <script>
 function toggleAllNodeSelection(state) {

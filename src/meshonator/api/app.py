@@ -731,6 +731,33 @@ def _build_alignment_module_patch(raw_metadata: dict[str, Any]) -> dict[str, Any
     return out
 
 
+def _is_alignment_compare_path(path: str) -> bool:
+    allowed_exact = {
+        "local_config.lora.hopLimit",
+        "local_config.device.tzdef",
+        "local_config.network.ntpServer",
+        "local_config.lora.ignoreMqtt",
+        "local_config.lora.spreadFactor",
+        "local_config.network.enabledProtocols",
+        "local_config.position.broadcastSmartMinimumIntervalSecs",
+        "local_config.device.rebroadcastMode",
+        "local_config.device.role",
+        "local_config.lora.bandwidth",
+        "local_config.lora.codingRate",
+        "local_config.position.gpsMode",
+        "local_config.position.gpsUpdateInterval",
+        "local_config.position.positionBroadcastSecs",
+        "module_config.telemetry.deviceUpdateInterval",
+    }
+    if path in allowed_exact:
+        return True
+    return path.endswith(".settings.uplinkEnabled") or path.endswith(".settings.downlinkEnabled")
+
+
+def _is_ignored_compare_path(path: str) -> bool:
+    return path.startswith("local_config.security.") or path.startswith("module_config.ambientLighting.")
+
+
 def _field_kind(field: Any) -> str:
     if FieldDescriptor is None:
         return "string"
@@ -1044,7 +1071,8 @@ def ui_nodes_compare(
     request: Request,
     source_node_id: UUID = Form(...),
     target_node_ids: list[str] = Form(default=[]),
-    ignore_location: bool = Form(True),
+    ignore_location: bool = Form(False),
+    use_alignment_profile: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_session_user),
 ) -> HTMLResponse:
@@ -1080,10 +1108,31 @@ def ui_nodes_compare(
                 "compare_source_id": str(source_node_id),
                 "compare_target_ids": parsed_target_ids,
                 "compare_ignore_location": ignore_location,
+                "compare_use_alignment_profile": use_alignment_profile,
             },
             status_code=400,
         )
     results = _compare_node_configs(source_node, targets, ignore_location=ignore_location)
+    for row in results:
+        diffs = row.get("diffs", [])
+        if not isinstance(diffs, list):
+            continue
+        filtered: list[dict[str, Any]] = []
+        for item in diffs:
+            path = item.get("path", "")
+            if not isinstance(path, str):
+                continue
+            if _is_ignored_compare_path(path):
+                continue
+            if use_alignment_profile and not _is_alignment_compare_path(path):
+                continue
+            filtered.append(item)
+        row["diffs"] = filtered
+        row["diff_count"] = len(filtered)
+        row["sections"] = sorted({_section_for_path(d["path"]) for d in filtered})
+        if row["status"] != "skipped":
+            row["status"] = "different" if filtered else "same"
+
     compared = len(results)
     different = len([r for r in results if r["status"] == "different"])
     same = len([r for r in results if r["status"] == "same"])
@@ -1100,6 +1149,7 @@ def ui_nodes_compare(
             "compare_source_id": str(source_node_id),
             "compare_target_ids": [str(t.id) for t in targets],
             "compare_ignore_location": ignore_location,
+            "compare_use_alignment_profile": use_alignment_profile,
             "compare_results": results,
         },
     )
@@ -1296,7 +1346,7 @@ def ui_nodes_compare_sync(
     sync_module_config: bool = Form(True),
     sync_channels: bool = Form(True),
     sync_location: bool = Form(False),
-    use_alignment_profile: bool = Form(True),
+    use_alignment_profile: bool = Form(False),
     dry_run: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),

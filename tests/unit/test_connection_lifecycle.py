@@ -126,6 +126,57 @@ def test_operations_service_favorite_only_patch_is_local_only(db) -> None:
     assert provider.disconnect_calls == 0
 
 
+def test_operations_service_updates_raw_metadata_after_apply(db) -> None:
+    provider = _LifecycleProvider()
+    registry = ProviderRegistry()
+    registry._providers["meshtastic"] = provider
+
+    node = ManagedNodeModel(
+        provider="meshtastic",
+        provider_node_id="!raw",
+        first_seen=datetime.now(timezone.utc),
+        last_seen=datetime.now(timezone.utc),
+        reachable=True,
+        raw_metadata={
+            "preferences": {"lora": {"hopLimit": 3}},
+            "modulePreferences": {"telemetry": {"deviceUpdateInterval": 60}},
+            "channels": [{"index": 0, "settings": {"name": "mesh"}}],
+        },
+    )
+    db.add(node)
+    db.flush()
+    db.add(
+        NodeEndpointModel(
+            node_id=node.id,
+            endpoint="tcp://172.30.105.36:4403",
+            host="172.30.105.36",
+            port=4403,
+            source="test",
+            is_primary=True,
+            last_seen=datetime.now(timezone.utc),
+        )
+    )
+    db.commit()
+
+    service = OperationsService(db, registry)
+    service.apply_patch(
+        node_id=node.id,
+        patch=ConfigPatch(
+            local_config_patch={"lora": {"hopLimit": 7}},
+            module_config_patch={"telemetry": {"deviceUpdateInterval": 300}},
+            channels_patch=[{"index": 0, "settings": {"downlinkEnabled": True}}],
+        ),
+        actor="tester",
+        source="test",
+        dry_run=False,
+    )
+
+    db.refresh(node)
+    assert node.raw_metadata["preferences"]["lora"]["hopLimit"] == 7
+    assert node.raw_metadata["modulePreferences"]["telemetry"]["deviceUpdateInterval"] == 300
+    assert node.raw_metadata["channels"][0]["settings"]["downlinkEnabled"] is True
+
+
 def test_sync_service_disconnects_after_endpoint_sync(db) -> None:
     provider = _LifecycleProvider()
     registry = ProviderRegistry()

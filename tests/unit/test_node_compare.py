@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from meshonator.api.app import _compare_node_configs
+from meshonator.api.app import _compare_node_configs, _is_alignment_compare_path, _is_ignored_compare_path
 from meshonator.db.models import ManagedNodeModel
 
 
@@ -85,3 +85,12 @@ def test_compare_node_configs_can_ignore_location_differences() -> None:
     assert ignored[0]["status"] == "same"
     assert strict[0]["status"] == "different"
     assert "location" in strict[0]["sections"]
+
+
+def test_compare_path_helpers_for_alignment_and_ignored_paths() -> None:
+    assert _is_alignment_compare_path("local_config.lora.hopLimit") is True
+    assert _is_alignment_compare_path("channels.0.settings.downlinkEnabled") is True
+    assert _is_alignment_compare_path("local_config.display.screenOnSecs") is False
+    assert _is_ignored_compare_path("local_config.security.privateKey") is True
+    assert _is_ignored_compare_path("module_config.ambientLighting.green") is True
+    assert _is_ignored_compare_path("module_config.telemetry.deviceUpdateInterval") is False

@@ -72,6 +72,7 @@
       </select>
     </label>
     <label><input type="checkbox" name="ignore_location" value="true" {% if compare_ignore_location is not defined or compare_ignore_location %}checked{% endif %} /> Ignore location differences</label>
+    <label><input type="checkbox" name="use_alignment_profile" value="true" {% if compare_use_alignment_profile is not defined or compare_use_alignment_profile %}checked{% endif %} /> Use alignment compare profile</label>
     <button type="submit">Compare Configuration</button>
   </form>
 </section>

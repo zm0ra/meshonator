@@ -16,6 +16,45 @@ from meshonator.providers.base import ProviderConnection
 from meshonator.providers.registry import ProviderRegistry
 
 
+def _merge_dict(base: dict, override: dict) -> dict:
+    out = dict(base)
+    for key, value in override.items():
+        if key in out and isinstance(out[key], dict) and isinstance(value, dict):
+            out[key] = _merge_dict(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
+def _merge_channels(current: list, patch: list[dict]) -> list[dict]:
+    by_index: dict[int, dict] = {}
+    for idx, item in enumerate(current):
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        if not isinstance(index, int):
+            index = idx
+        by_index[index] = dict(item)
+    for item in patch:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        if not isinstance(index, int):
+            continue
+        row = dict(by_index.get(index, {"index": index}))
+        for key, value in item.items():
+            if key in {"settings", "moduleSettings", "module_settings"} and isinstance(value, dict):
+                target_key = "moduleSettings" if key in {"moduleSettings", "module_settings"} else "settings"
+                existing = row.get(target_key, {})
+                if not isinstance(existing, dict):
+                    existing = {}
+                row[target_key] = _merge_dict(existing, value)
+            else:
+                row[key] = value
+        by_index[index] = row
+    return [by_index[i] for i in sorted(by_index.keys())]
+
+
 class OperationsService:
     def __init__(self, db: Session, registry: ProviderRegistry) -> None:
         self.db = db
@@ -95,10 +134,27 @@ class OperationsService:
                         node.latitude = patch.latitude
                     if patch.longitude is not None:
                         node.longitude = patch.longitude
-                    if patch.altitude is not None:
-                        node.altitude = patch.altitude
-                    node.last_successful_sync = datetime.now(timezone.utc)
-                    self.db.commit()
+                if patch.altitude is not None:
+                    node.altitude = patch.altitude
+                raw = json.loads(json.dumps(node.raw_metadata)) if isinstance(node.raw_metadata, dict) else {}
+                if patch.local_config_patch:
+                    prefs = raw.get("preferences", {})
+                    if not isinstance(prefs, dict):
+                        prefs = {}
+                    raw["preferences"] = _merge_dict(prefs, patch.local_config_patch)
+                if patch.module_config_patch:
+                    module_prefs = raw.get("modulePreferences", {})
+                    if not isinstance(module_prefs, dict):
+                        module_prefs = {}
+                    raw["modulePreferences"] = _merge_dict(module_prefs, patch.module_config_patch)
+                if patch.channels_patch:
+                    channels = raw.get("channels", [])
+                    if not isinstance(channels, list):
+                        channels = []
+                    raw["channels"] = _merge_channels(channels, patch.channels_patch)
+                node.raw_metadata = raw
+                node.last_successful_sync = datetime.now(timezone.utc)
+                self.db.commit()
             finally:
                 provider.disconnect(conn)
 

@@ -70,6 +70,18 @@ class _FakeConn:
         self.localNode = _FakeLocalNode()
 
 
+class _StrictAltitudeLocalNode(_FakeLocalNode):
+    def setFixedPosition(self, lat: float, lon: float, alt=None):
+        if alt is None:
+            raise TypeError("'NoneType' object cannot be interpreted as an integer")
+        super().setFixedPosition(lat=lat, lon=lon, alt=alt)
+
+
+class _StrictAltitudeConn:
+    def __init__(self) -> None:
+        self.localNode = _StrictAltitudeLocalNode()
+
+
 def test_apply_patch_writes_local_module_and_channel_sections() -> None:
     provider = MeshtasticProvider()
     conn = _FakeConn()
@@ -101,3 +113,19 @@ def test_apply_patch_writes_local_module_and_channel_sections() -> None:
     assert conn.localNode.moduleConfig.telemetry.deviceTelemetryEnabled is True
     assert conn.localNode.channels[0].settings.name == "mesh-main"
     assert conn.localNode.channels[0].module_settings.positionPrecision == 13
+
+
+def test_apply_patch_location_without_altitude_does_not_fail() -> None:
+    provider = MeshtasticProvider()
+    conn = _StrictAltitudeConn()
+    patch = ConfigPatch(
+        latitude=53.12,
+        longitude=14.56,
+        altitude=None,
+    )
+
+    result = provider.apply_config_patch(conn, provider_node_id="!a1", patch=patch, dry_run=False)
+
+    assert result["mode"] == "apply"
+    assert result["applied"]["position"]["altitude"] is None
+    assert conn.localNode.fixed_position_calls[-1]["alt"] == 0

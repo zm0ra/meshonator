@@ -197,7 +197,8 @@ class MeshtasticProvider(Provider):
                 applied["name"] = name_payload
 
         if patch.latitude is not None and patch.longitude is not None and hasattr(local_node, "setFixedPosition"):
-            local_node.setFixedPosition(lat=patch.latitude, lon=patch.longitude, alt=patch.altitude)
+            position_kwargs = {"lat": patch.latitude, "lon": patch.longitude, "alt": int(patch.altitude) if patch.altitude is not None else 0}
+            local_node.setFixedPosition(**position_kwargs)
             applied["position"] = {
                 "latitude": patch.latitude,
                 "longitude": patch.longitude,

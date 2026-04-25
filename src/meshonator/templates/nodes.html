@@ -31,7 +31,13 @@
       <td>{{ n.hardware_model }}</td>
       <td>{{ n.role }}</td>
       <td>{{ 'yes' if n.favorite else 'no' }}</td>
-      <td>{{ n.latitude }}, {{ n.longitude }}</td>
+      <td>
+        {% if n.latitude is not none and n.longitude is not none %}
+          {{ '%.5f'|format(n.latitude) }}, {{ '%.5f'|format(n.longitude) }}
+        {% else %}
+          -
+        {% endif %}
+      </td>
       <td>{{ n.last_seen }}</td>
       <td>{{ 'online' if n.reachable else 'offline' }}</td>
     </tr>

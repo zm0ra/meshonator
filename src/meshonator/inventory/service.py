@@ -62,8 +62,7 @@ class InventoryService:
             db_node.firmware_version = node.firmware.version
             db_node.hardware_model = node.hardware.model
             db_node.role = node.role
-            if node.favorite:
-                db_node.favorite = True
+            db_node.favorite = True
             db_node.managed = node.managed
             db_node.latitude = node.location.latitude
             db_node.longitude = node.location.longitude

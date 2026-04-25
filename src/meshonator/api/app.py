@@ -1049,6 +1049,43 @@ def ui_nodes_batch_configure(
         return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
 
 
+@app.post("/ui/nodes/favorites/all")
+def ui_nodes_favorite_all(
+    dry_run: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        nodes = InventoryService(db).list_nodes()
+        node_ids = [str(node.id) for node in nodes if node.id is not None]
+        if not node_ids:
+            return RedirectResponse(url="/nodes?error=No+managed+nodes+found", status_code=303)
+
+        job = JobsService(db).create(
+            job_type="multi_node_config_patch",
+            requested_by=user.username,
+            source="ui",
+            payload={
+                "node_ids": node_ids,
+                "dry_run": dry_run,
+                "base_patch": {
+                    "favorite": True,
+                    "local_config_patch": {},
+                    "module_config_patch": {},
+                    "channels_patch": [],
+                },
+                "clone": {},
+                "location_spread": {"enabled": False},
+            },
+        )
+        enqueue_multi_node_patch_job(job.id, registry)
+        message = quote_plus(f"Queued favorite=true for {len(node_ids)} managed nodes. Job ID: {job.id}")
+        return RedirectResponse(url=f"/nodes?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Favorite-all failed: {exc}")
+        return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
+
+
 @app.post("/ui/nodes/compare-sync")
 def ui_nodes_compare_sync(
     source_node_id: UUID = Form(...),

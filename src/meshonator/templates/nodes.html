@@ -9,6 +9,10 @@
     <button type="button" onclick="toggleAllNodeSelection(true)">Select all</button>
     <button type="button" onclick="toggleAllNodeSelection(false)">Clear</button>
   </p>
+  <form method="post" action="/ui/nodes/favorites/all" class="inline-actions">
+    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+    <button type="submit">Queue Favorite=true For All Managed Nodes</button>
+  </form>
   <table>
     <tr>
       <th>Select</th><th>Provider</th><th>Node ID</th><th>Name</th><th>IP</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>

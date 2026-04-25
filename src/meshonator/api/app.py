@@ -245,7 +245,10 @@ def _get_nested(src: dict[str, Any], path: list[str]) -> Any:
 def _field_kind(field: Any) -> str:
     if FieldDescriptor is None:
         return "string"
-    if field.label == FieldDescriptor.LABEL_REPEATED:
+    is_repeated = bool(getattr(field, "is_repeated", False))
+    if not is_repeated and hasattr(field, "label"):
+        is_repeated = field.label == FieldDescriptor.LABEL_REPEATED
+    if is_repeated:
         return "json"
     if field.type == FieldDescriptor.TYPE_MESSAGE:
         return "message"

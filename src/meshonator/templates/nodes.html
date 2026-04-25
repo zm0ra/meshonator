@@ -4,9 +4,11 @@
   <h1>Nodes</h1>
   <table>
     <tr>
-      <th>Provider</th><th>Node ID</th><th>Name</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>
+      <th>Provider</th><th>Node ID</th><th>Name</th><th>IP</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>
     </tr>
     {% for n in nodes %}
+    {% set primary_ep = (n.endpoints | selectattr('is_primary') | list | first) %}
+    {% set fallback_ep = (n.endpoints | list | first) %}
     <tr>
       <td>{{ n.provider }}</td>
       <td>
@@ -16,6 +18,7 @@
         {% endif %}
       </td>
       <td>{{ n.short_name }} / {{ n.long_name }}</td>
+      <td>{{ (primary_ep or fallback_ep).host if (primary_ep or fallback_ep) else '-' }}</td>
       <td>{{ n.firmware_version }}</td>
       <td>{{ n.hardware_model }}</td>
       <td>{{ n.role }}</td>

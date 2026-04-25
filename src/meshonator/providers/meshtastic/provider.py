@@ -131,7 +131,7 @@ class MeshtasticProvider(Provider):
                     short_name=short_name,
                     long_name=long_name,
                     role=role,
-                    favorite=bool(local_record.get("isFavorite")) if isinstance(local_record, dict) else False,
+                    favorite=False,
                     first_seen=now,
                     last_seen=_ts_to_dt(last_heard) or now,
                     reachable=True,
@@ -205,12 +205,19 @@ class MeshtasticProvider(Provider):
             }
 
         if patch.local_config_patch and hasattr(local_node, "writeConfig"):
-            local_node.writeConfig("local", patch.local_config_patch)
-            applied["local_config"] = patch.local_config_patch
+            local_written = _apply_local_config_patch(local_node, patch.local_config_patch)
+            if local_written:
+                applied["local_config"] = {"written_sections": local_written, "patch": patch.local_config_patch}
 
         if patch.module_config_patch and hasattr(local_node, "writeConfig"):
-            local_node.writeConfig("module", patch.module_config_patch)
-            applied["module_config"] = patch.module_config_patch
+            module_written = _apply_module_config_patch(local_node, patch.module_config_patch)
+            if module_written:
+                applied["module_config"] = {"written_sections": module_written, "patch": patch.module_config_patch}
+
+        if patch.channels_patch and hasattr(local_node, "writeChannel"):
+            channel_updates = _apply_channels_patch(local_node, patch.channels_patch)
+            if channel_updates:
+                applied["channels"] = channel_updates
 
         return {"provider_node_id": provider_node_id, "mode": "apply", "applied": applied, "supported": True}
 
@@ -328,3 +335,94 @@ def _ts_to_dt(value: Any) -> datetime | None:
         return datetime.fromtimestamp(value, tz=timezone.utc)
     except Exception:
         return None
+
+
+def _normalize_key(key: str) -> str:
+    return key.replace("-", "_")
+
+
+def _assign_message_fields(message: Any, values: dict[str, Any]) -> None:
+    for raw_key, value in values.items():
+        key = _normalize_key(raw_key)
+        if not hasattr(message, key):
+            continue
+        target = getattr(message, key)
+        if isinstance(value, dict):
+            _assign_message_fields(target, value)
+            continue
+        if isinstance(value, list):
+            container = getattr(message, key)
+            if hasattr(container, "clear"):
+                container.clear()
+            if hasattr(container, "extend"):
+                container.extend(value)
+            else:
+                try:
+                    setattr(message, key, value)
+                except Exception:
+                    pass
+            continue
+        try:
+            setattr(message, key, value)
+        except Exception:
+            continue
+
+
+def _apply_local_config_patch(local_node: Any, patch: dict[str, Any]) -> list[str]:
+    written: list[str] = []
+    for raw_section_name, section_values in patch.items():
+        if not isinstance(section_values, dict):
+            continue
+        section_name = _normalize_key(raw_section_name)
+        if not hasattr(local_node.localConfig, section_name):
+            continue
+        section_msg = getattr(local_node.localConfig, section_name)
+        _assign_message_fields(section_msg, section_values)
+        local_node.writeConfig(section_name)
+        written.append(section_name)
+    return written
+
+
+def _apply_module_config_patch(local_node: Any, patch: dict[str, Any]) -> list[str]:
+    written: list[str] = []
+    for raw_section_name, section_values in patch.items():
+        if not isinstance(section_values, dict):
+            continue
+        section_name = _normalize_key(raw_section_name)
+        if not hasattr(local_node.moduleConfig, section_name):
+            continue
+        section_msg = getattr(local_node.moduleConfig, section_name)
+        _assign_message_fields(section_msg, section_values)
+        local_node.writeConfig(section_name)
+        written.append(section_name)
+    return written
+
+
+def _apply_channels_patch(local_node: Any, channels_patch: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    applied: list[dict[str, Any]] = []
+    channels = getattr(local_node, "channels", []) or []
+    for item in channels_patch:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        if not isinstance(index, int):
+            continue
+        channel = next((c for c in channels if getattr(c, "index", None) == index), None)
+        if channel is None:
+            continue
+        settings_patch = item.get("settings")
+        if isinstance(settings_patch, dict) and hasattr(channel, "settings"):
+            _assign_message_fields(channel.settings, settings_patch)
+        module_settings_patch = item.get("moduleSettings") or item.get("module_settings")
+        if isinstance(module_settings_patch, dict) and hasattr(channel, "module_settings"):
+            _assign_message_fields(channel.module_settings, module_settings_patch)
+        role_name = item.get("role")
+        if isinstance(role_name, str) and role_name.strip():
+            try:
+                enum_type = type(channel).Role
+                channel.role = enum_type.Value(role_name.strip().upper())
+            except Exception:
+                pass
+        local_node.writeChannel(index)
+        applied.append({"index": index})
+    return applied

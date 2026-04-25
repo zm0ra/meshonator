@@ -53,6 +53,52 @@
       <label>Desired template (JSON object)
         <textarea name="desired_template_json" rows="6">{{ entry.group.desired_config_template | tojson(indent=2) }}</textarea>
       </label>
+      <label>Template pin state
+        <select name="template_favorite_state">
+          <option value="keep">Keep current</option>
+          <option value="true">Pin in Meshonator</option>
+          <option value="false">Unpin in Meshonator</option>
+        </select>
+      </label>
+      <label>Template device role
+        <input type="text" name="template_device_role" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" />
+      </label>
+      <label>Template position broadcast interval (sec)
+        <input type="number" min="0" name="template_position_broadcast_secs" placeholder="900" />
+      </label>
+      <label>Template smart position broadcast
+        <select name="template_position_broadcast_smart_enabled">
+          <option value="keep">Keep current</option>
+          <option value="true">Enable</option>
+          <option value="false">Disable</option>
+        </select>
+      </label>
+      <label>Template GPS update interval (sec)
+        <input type="number" min="0" name="template_gps_update_interval" placeholder="120" />
+      </label>
+      <label>Template GPS enabled
+        <select name="template_gps_enabled">
+          <option value="keep">Keep current</option>
+          <option value="true">Enable</option>
+          <option value="false">Disable</option>
+        </select>
+      </label>
+      <label>Template LoRa hop limit
+        <input type="number" min="0" name="template_lora_hop_limit" placeholder="7" />
+      </label>
+      <label>Template LoRa TX power
+        <input type="number" min="0" name="template_lora_tx_power" placeholder="27" />
+      </label>
+      <label>Template telemetry device interval (sec)
+        <input type="number" min="0" name="template_telemetry_device_update_interval" placeholder="300" />
+      </label>
+      <label>Template telemetry device enabled
+        <select name="template_telemetry_device_enabled">
+          <option value="keep">Keep current</option>
+          <option value="true">Enable</option>
+          <option value="false">Disable</option>
+        </select>
+      </label>
       <button type="submit">Save Group Config</button>
     </form>
     <form method="post" action="/ui/groups/{{ entry.group.id }}/apply-template" class="stack mt-1">

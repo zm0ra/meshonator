@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from urllib.parse import quote_plus
 from uuid import UUID
 
@@ -107,6 +108,78 @@ def _parse_json_list(raw: str) -> list:
     return decoded
 
 
+def _parse_optional_int(raw: str) -> int | None:
+    value = raw.strip()
+    if not value:
+        return None
+    return int(value)
+
+
+def _parse_optional_bool(raw: str) -> bool | None:
+    value = raw.strip().lower()
+    if not value or value == "keep":
+        return None
+    if value in {"true", "1", "yes", "on"}:
+        return True
+    if value in {"false", "0", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value: {raw}")
+
+
+def _set_nested(dst: dict[str, Any], path: list[str], value: Any) -> None:
+    cursor = dst
+    for segment in path[:-1]:
+        cursor = cursor.setdefault(segment, {})
+    cursor[path[-1]] = value
+
+
+def _merge_patch(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for key, value in extra.items():
+        if key in out and isinstance(out[key], dict) and isinstance(value, dict):
+            out[key] = _merge_patch(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
+def _normalize_roles(raw: str) -> list[str]:
+    roles = []
+    for item in _parse_multi_value(raw):
+        roles.append(item.strip().upper())
+    return [r for r in roles if r]
+
+
+def _extract_zero_hop_candidates(raw_metadata: dict[str, Any], max_hops: int = 0) -> list[dict[str, Any]]:
+    nodes = raw_metadata.get("nodesInMesh", {})
+    if not isinstance(nodes, dict):
+        return []
+    out: list[dict[str, Any]] = []
+    for node_id, payload in nodes.items():
+        if not isinstance(payload, dict):
+            continue
+        hops_away = payload.get("hopsAway")
+        if not isinstance(hops_away, int):
+            continue
+        if hops_away > max_hops:
+            continue
+        user = payload.get("user", {}) if isinstance(payload.get("user"), dict) else {}
+        out.append(
+            {
+                "id": user.get("id") or node_id,
+                "short_name": user.get("shortName"),
+                "long_name": user.get("longName"),
+                "role": user.get("role"),
+                "hw_model": user.get("hwModel"),
+                "hops_away": hops_away,
+                "last_heard": payload.get("lastHeard"),
+                "snr": payload.get("snr"),
+            }
+        )
+    out.sort(key=lambda item: (item.get("hops_away", 999), (item.get("short_name") or item.get("id") or "")))
+    return out
+
+
 @app.on_event("startup")
 def startup() -> None:
     Base.metadata.create_all(engine)
@@ -125,7 +198,6 @@ def health() -> dict:
     return {
         "status": "ok",
         "providers": [p.health().model_dump() for p in registry.all()],
-        "tcp_only": True,
     }
 
 
@@ -308,6 +380,7 @@ def node_details_page(
     if node is None:
         raise HTTPException(status_code=404, detail="Node not found")
     audits = list(db.scalars(select(AuditLogModel).where(AuditLogModel.node_id == node.id).order_by(AuditLogModel.created_at.desc()).limit(20)).all())
+    zero_hop_candidates = _extract_zero_hop_candidates(node.raw_metadata or {}, max_hops=0)
     return templates.TemplateResponse(
         request,
         "node_detail.html",
@@ -315,6 +388,7 @@ def node_details_page(
             "user": user,
             "node": node,
             "audits": audits,
+            "zero_hop_candidates": zero_hop_candidates,
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
         },
@@ -334,6 +408,19 @@ def ui_node_configure(
     local_config_patch_json: str = Form(""),
     module_config_patch_json: str = Form(""),
     channels_patch_json: str = Form(""),
+    position_broadcast_secs: str = Form(""),
+    position_broadcast_smart_enabled: str = Form("keep"),
+    gps_update_interval: str = Form(""),
+    broadcast_smart_min_distance: str = Form(""),
+    broadcast_smart_min_interval_secs: str = Form(""),
+    gps_enabled: str = Form("keep"),
+    fixed_position: str = Form("keep"),
+    position_flags: str = Form(""),
+    device_role: str = Form(""),
+    lora_hop_limit: str = Form(""),
+    lora_tx_power: str = Form(""),
+    telemetry_device_update_interval: str = Form(""),
+    telemetry_device_enabled: str = Form("keep"),
     dry_run: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
@@ -344,6 +431,49 @@ def ui_node_configure(
             favorite_value = True
         elif favorite_state == "false":
             favorite_value = False
+        local_patch = _parse_json_dict(local_config_patch_json)
+        module_patch = _parse_json_dict(module_config_patch_json)
+        channels_patch = _parse_json_list(channels_patch_json)
+
+        value = _parse_optional_int(position_broadcast_secs)
+        if value is not None:
+            _set_nested(local_patch, ["position", "positionBroadcastSecs"], value)
+        value = _parse_optional_bool(position_broadcast_smart_enabled)
+        if value is not None:
+            _set_nested(local_patch, ["position", "positionBroadcastSmartEnabled"], value)
+        value = _parse_optional_int(gps_update_interval)
+        if value is not None:
+            _set_nested(local_patch, ["position", "gpsUpdateInterval"], value)
+        value = _parse_optional_int(broadcast_smart_min_distance)
+        if value is not None:
+            _set_nested(local_patch, ["position", "broadcastSmartMinimumDistance"], value)
+        value = _parse_optional_int(broadcast_smart_min_interval_secs)
+        if value is not None:
+            _set_nested(local_patch, ["position", "broadcastSmartMinimumIntervalSecs"], value)
+        value = _parse_optional_bool(gps_enabled)
+        if value is not None:
+            _set_nested(local_patch, ["position", "gpsEnabled"], value)
+        value = _parse_optional_bool(fixed_position)
+        if value is not None:
+            _set_nested(local_patch, ["position", "fixedPosition"], value)
+        value = _parse_optional_int(position_flags)
+        if value is not None:
+            _set_nested(local_patch, ["position", "positionFlags"], value)
+        if value := device_role.strip():
+            _set_nested(local_patch, ["device", "role"], value.upper())
+        value = _parse_optional_int(lora_hop_limit)
+        if value is not None:
+            _set_nested(local_patch, ["lora", "hopLimit"], value)
+        value = _parse_optional_int(lora_tx_power)
+        if value is not None:
+            _set_nested(local_patch, ["lora", "txPower"], value)
+        value = _parse_optional_int(telemetry_device_update_interval)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "deviceUpdateInterval"], value)
+        value = _parse_optional_bool(telemetry_device_enabled)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "deviceTelemetryEnabled"], value)
+
         patch = ConfigPatch(
             short_name=short_name.strip() or None,
             long_name=long_name.strip() or None,
@@ -352,9 +482,9 @@ def ui_node_configure(
             latitude=_parse_optional_float(latitude),
             longitude=_parse_optional_float(longitude),
             altitude=_parse_optional_float(altitude),
-            local_config_patch=_parse_json_dict(local_config_patch_json),
-            module_config_patch=_parse_json_dict(module_config_patch_json),
-            channels_patch=_parse_json_list(channels_patch_json),
+            local_config_patch=local_patch,
+            module_config_patch=module_patch,
+            channels_patch=channels_patch,
         )
         job = JobsService(db).create(
             job_type="node_config_patch",
@@ -371,6 +501,77 @@ def ui_node_configure(
         return RedirectResponse(url=f"/nodes/{node_id}?message={message}", status_code=303)
     except Exception as exc:
         error = quote_plus(f"Node patch failed: {exc}")
+        return RedirectResponse(url=f"/nodes/{node_id}?error={error}", status_code=303)
+
+
+@app.post("/ui/nodes/{node_id}/zero-hop/import")
+def ui_node_zero_hop_import(
+    node_id: UUID,
+    group_name: str = Form(""),
+    allowed_roles_text: str = Form("ROUTER\nROUTER_LATE\nCLIENT_BASE"),
+    max_hops: int = Form(0),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        node = db.get(ManagedNodeModel, node_id)
+        if node is None:
+            return RedirectResponse(url=f"/nodes/{node_id}?error=Node+not+found", status_code=303)
+        candidates = _extract_zero_hop_candidates(node.raw_metadata or {}, max_hops=max_hops)
+        allowed_roles = set(_normalize_roles(allowed_roles_text))
+        if allowed_roles:
+            candidates = [item for item in candidates if str(item.get("role", "")).upper() in allowed_roles]
+
+        candidate_ids = [item["id"] for item in candidates if isinstance(item.get("id"), str)]
+        if not candidate_ids:
+            return RedirectResponse(url=f"/nodes/{node_id}?error=No+matching+0-hop+nodes", status_code=303)
+
+        matched_nodes = list(
+            db.scalars(
+                select(ManagedNodeModel).where(
+                    ManagedNodeModel.provider == node.provider,
+                    ManagedNodeModel.provider_node_id.in_(candidate_ids),
+                )
+            ).all()
+        )
+        if not matched_nodes:
+            return RedirectResponse(
+                url=f"/nodes/{node_id}?error=No+matching+managed+nodes+for+selected+0-hop+entries",
+                status_code=303,
+            )
+
+        service = GroupsService(db)
+        effective_group_name = group_name.strip() or f"zero-hop-{node.short_name or node.provider_node_id}"
+        group = service.get_group_by_name(effective_group_name)
+        if group is None:
+            group = service.create_group(
+                name=effective_group_name,
+                description=f"Imported from {node.provider_node_id} zero-hop view",
+                dynamic_filter={},
+                desired_config_template={},
+            )
+        assigned_count = service.assign_nodes(group.id, [item.id for item in matched_nodes])
+        AuditService(db).log(
+            actor=user.username,
+            source="ui",
+            action="node.zero_hop.import_to_group",
+            provider=node.provider,
+            node_id=node.id,
+            group_id=group.id,
+            metadata={
+                "max_hops": max_hops,
+                "allowed_roles": sorted(allowed_roles),
+                "candidate_count": len(candidate_ids),
+                "matched_managed_count": len(matched_nodes),
+                "assigned_count": assigned_count,
+            },
+        )
+        message = quote_plus(
+            f"Imported {assigned_count} nodes into group {group.name} (matched managed: {len(matched_nodes)} / candidates: {len(candidate_ids)})"
+        )
+        return RedirectResponse(url=f"/nodes/{node_id}?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"0-hop import failed: {exc}")
         return RedirectResponse(url=f"/nodes/{node_id}?error={error}", status_code=303)
 
 
@@ -511,15 +712,63 @@ def ui_group_configure(
     description: str = Form(""),
     dynamic_filter_json: str = Form("{}"),
     desired_template_json: str = Form("{}"),
+    template_favorite_state: str = Form("keep"),
+    template_position_broadcast_secs: str = Form(""),
+    template_position_broadcast_smart_enabled: str = Form("keep"),
+    template_gps_update_interval: str = Form(""),
+    template_gps_enabled: str = Form("keep"),
+    template_device_role: str = Form(""),
+    template_lora_hop_limit: str = Form(""),
+    template_lora_tx_power: str = Form(""),
+    template_telemetry_device_update_interval: str = Form(""),
+    template_telemetry_device_enabled: str = Form("keep"),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
 ) -> RedirectResponse:
     try:
+        desired_template = _parse_json_dict(desired_template_json)
+        local_patch = desired_template.get("local_config_patch", {}) if isinstance(desired_template.get("local_config_patch"), dict) else {}
+        module_patch = desired_template.get("module_config_patch", {}) if isinstance(desired_template.get("module_config_patch"), dict) else {}
+
+        favorite_value = _parse_optional_bool(template_favorite_state)
+        if favorite_value is not None:
+            desired_template["favorite"] = favorite_value
+        value = _parse_optional_int(template_position_broadcast_secs)
+        if value is not None:
+            _set_nested(local_patch, ["position", "positionBroadcastSecs"], value)
+        value = _parse_optional_bool(template_position_broadcast_smart_enabled)
+        if value is not None:
+            _set_nested(local_patch, ["position", "positionBroadcastSmartEnabled"], value)
+        value = _parse_optional_int(template_gps_update_interval)
+        if value is not None:
+            _set_nested(local_patch, ["position", "gpsUpdateInterval"], value)
+        value = _parse_optional_bool(template_gps_enabled)
+        if value is not None:
+            _set_nested(local_patch, ["position", "gpsEnabled"], value)
+        if value := template_device_role.strip():
+            _set_nested(local_patch, ["device", "role"], value.upper())
+        value = _parse_optional_int(template_lora_hop_limit)
+        if value is not None:
+            _set_nested(local_patch, ["lora", "hopLimit"], value)
+        value = _parse_optional_int(template_lora_tx_power)
+        if value is not None:
+            _set_nested(local_patch, ["lora", "txPower"], value)
+        value = _parse_optional_int(template_telemetry_device_update_interval)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "deviceUpdateInterval"], value)
+        value = _parse_optional_bool(template_telemetry_device_enabled)
+        if value is not None:
+            _set_nested(module_patch, ["telemetry", "deviceTelemetryEnabled"], value)
+        if local_patch:
+            desired_template["local_config_patch"] = local_patch
+        if module_patch:
+            desired_template["module_config_patch"] = module_patch
+
         group = GroupsService(db).update_group(
             group_id,
             description=description.strip() or None,
             dynamic_filter=_parse_json_dict(dynamic_filter_json),
-            desired_config_template=_parse_json_dict(desired_template_json),
+            desired_config_template=desired_template,
         )
         AuditService(db).log(
             actor=user.username,
@@ -592,7 +841,7 @@ def settings_page(
         }
         for p in registry.all()
     ]
-    return templates.TemplateResponse(request, "settings.html", {"user": user, "providers": providers, "tcp_only": True})
+    return templates.TemplateResponse(request, "settings.html", {"user": user, "providers": providers})
 
 
 @app.post("/api/discovery/scan")
@@ -610,7 +859,7 @@ def api_discovery_scan(
         source="api",
     )
     AuditService(db).log(actor=user.username, source="api", action="discovery.scan", provider=payload.provider, metadata=payload.model_dump())
-    return {"count": len(found), "endpoints": [e.endpoint for e in found], "tcp_only": True}
+    return {"count": len(found), "endpoints": [e.endpoint for e in found]}
 
 
 @app.get("/api/nodes")

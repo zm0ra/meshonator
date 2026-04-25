@@ -49,7 +49,7 @@ def test_fetch_nodes_uses_owner_id_and_owner_role() -> None:
     assert node.short_name == "BKO7"
     assert node.long_name == "Szczecin Bukowo"
     assert node.role == "ROUTER"
-    assert node.favorite is True
+    assert node.favorite is False
     assert node.location.latitude == 53.0
     assert node.location.longitude == 14.0
 

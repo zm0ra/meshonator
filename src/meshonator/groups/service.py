@@ -18,6 +18,9 @@ class GroupsService:
     def get_group(self, group_id: UUID) -> NodeGroupModel | None:
         return self.db.get(NodeGroupModel, group_id)
 
+    def get_group_by_name(self, name: str) -> NodeGroupModel | None:
+        return self.db.scalar(select(NodeGroupModel).where(NodeGroupModel.name == name))
+
     def create_group(self, name: str, description: str | None, dynamic_filter: dict, desired_config_template: dict) -> NodeGroupModel:
         group = NodeGroupModel(
             name=name,
@@ -56,6 +59,22 @@ class GroupsService:
         if existing is None:
             self.db.add(NodeGroupMemberModel(group_id=group_id, node_id=node_id))
             self.db.commit()
+
+    def assign_nodes(self, group_id: UUID, node_ids: list[UUID]) -> int:
+        assigned = 0
+        existing_ids = set(
+            self.db.scalars(
+                select(NodeGroupMemberModel.node_id).where(NodeGroupMemberModel.group_id == group_id)
+            ).all()
+        )
+        for node_id in node_ids:
+            if node_id in existing_ids:
+                continue
+            self.db.add(NodeGroupMemberModel(group_id=group_id, node_id=node_id))
+            assigned += 1
+        if assigned:
+            self.db.commit()
+        return assigned
 
     def list_assigned_members(self, group_id: UUID) -> list[ManagedNodeModel]:
         stmt = (

@@ -9,7 +9,7 @@
     <p><b>Provider Node ID:</b> {{ node.provider_node_id }}</p>
     <p><b>Short/Long:</b> {{ node.short_name }} / {{ node.long_name }}</p>
     <p><b>Role:</b> {{ node.role }}</p>
-    <p><b>Favorite:</b> {{ node.favorite }}</p>
+    <p><b>Pinned:</b> {{ node.favorite }}</p>
     <p><b>Firmware/Hardware:</b> {{ node.firmware_version }} / {{ node.hardware_model }}</p>
     <p><b>Reachable:</b> {{ node.reachable }}</p>
     <h3>Endpoints (TCP)</h3>
@@ -44,8 +44,8 @@
     <label>Favorite
       <select name="favorite_state">
         <option value="keep">Keep current</option>
-        <option value="true">Set favorite</option>
-        <option value="false">Unset favorite</option>
+        <option value="true">Pin in Meshonator</option>
+        <option value="false">Unpin in Meshonator</option>
       </select>
     </label>
     <label>Latitude
@@ -60,6 +60,61 @@
     <label>Dry run
       <input type="checkbox" name="dry_run" value="true" />
     </label>
+    <label>Position broadcast interval (sec)
+      <input type="number" min="0" name="position_broadcast_secs" placeholder="900" />
+    </label>
+    <label>Smart position broadcast
+      <select name="position_broadcast_smart_enabled">
+        <option value="keep">Keep current</option>
+        <option value="true">Enable</option>
+        <option value="false">Disable</option>
+      </select>
+    </label>
+    <label>GPS update interval (sec)
+      <input type="number" min="0" name="gps_update_interval" placeholder="120" />
+    </label>
+    <label>GPS enabled
+      <select name="gps_enabled">
+        <option value="keep">Keep current</option>
+        <option value="true">Enable</option>
+        <option value="false">Disable</option>
+      </select>
+    </label>
+    <label>Fixed position
+      <select name="fixed_position">
+        <option value="keep">Keep current</option>
+        <option value="true">Enable fixed position</option>
+        <option value="false">Disable fixed position</option>
+      </select>
+    </label>
+    <label>Position flags
+      <input type="number" min="0" name="position_flags" placeholder="811" />
+    </label>
+    <label>Smart minimum distance (m)
+      <input type="number" min="0" name="broadcast_smart_min_distance" placeholder="100" />
+    </label>
+    <label>Smart minimum interval (sec)
+      <input type="number" min="0" name="broadcast_smart_min_interval_secs" placeholder="30" />
+    </label>
+    <label>Device role
+      <input type="text" name="device_role" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" />
+    </label>
+    <label>LoRa hop limit
+      <input type="number" min="0" name="lora_hop_limit" placeholder="7" />
+    </label>
+    <label>LoRa TX power
+      <input type="number" min="0" name="lora_tx_power" placeholder="27" />
+    </label>
+    <label>Telemetry device interval (sec)
+      <input type="number" min="0" name="telemetry_device_update_interval" placeholder="300" />
+    </label>
+    <label>Telemetry device enabled
+      <select name="telemetry_device_enabled">
+        <option value="keep">Keep current</option>
+        <option value="true">Enable</option>
+        <option value="false">Disable</option>
+      </select>
+    </label>
     <label>Local config patch (JSON object)
       <textarea name="local_config_patch_json" rows="6" placeholder='{"position":{"positionBroadcastSecs":300}}'></textarea>
     </label>
@@ -71,6 +126,41 @@
     </label>
     <div><button type="submit">Apply Node Changes</button></div>
   </form>
+</section>
+<section class="card">
+  <h2>0-Hop Neighbors</h2>
+  <p class="muted">Candidates are read from this node's current mesh database (`nodesInMesh`) and filtered by hop distance.</p>
+  <form method="post" action="/ui/nodes/{{ node.id }}/zero-hop/import" class="grid two">
+    <label>Target group name
+      <input type="text" name="group_name" placeholder="zero-hop-{{ node.short_name or node.provider_node_id }}" />
+    </label>
+    <label>Max hops
+      <input type="number" name="max_hops" min="0" value="0" />
+    </label>
+    <label>Allowed roles (one per line)
+      <textarea name="allowed_roles_text" rows="4">ROUTER
+ROUTER_LATE
+CLIENT_BASE</textarea>
+    </label>
+    <div><button type="submit">Import Matching Managed Nodes To Group</button></div>
+  </form>
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Role</th><th>HW</th><th>Hops</th><th>SNR</th><th>Last Heard</th></tr>
+    {% for n in zero_hop_candidates %}
+    <tr>
+      <td>{{ n.id }}</td>
+      <td>{{ n.short_name }} / {{ n.long_name }}</td>
+      <td>{{ n.role }}</td>
+      <td>{{ n.hw_model }}</td>
+      <td>{{ n.hops_away }}</td>
+      <td>{{ n.snr }}</td>
+      <td>{{ n.last_heard }}</td>
+    </tr>
+    {% endfor %}
+    {% if not zero_hop_candidates %}
+    <tr><td colspan="7" class="muted">No 0-hop entries in current node snapshot.</td></tr>
+    {% endif %}
+  </table>
 </section>
 <section class="card">
   <h2>Node Info Snapshot</h2>

@@ -35,6 +35,16 @@ class InventoryService:
                         NodeEndpointModel.endpoint == endpoint,
                     )
                 )
+                if db_node is None:
+                    db_node = self.db.scalar(
+                        select(ManagedNodeModel)
+                        .join(NodeEndpointModel, NodeEndpointModel.node_id == ManagedNodeModel.id)
+                        .where(
+                            ManagedNodeModel.provider == node.provider.value,
+                            ManagedNodeModel.provider_node_id.like("local-%"),
+                            NodeEndpointModel.endpoint == endpoint,
+                        )
+                    )
                 if db_node is not None:
                     db_node.provider_node_id = node.provider_node_id
             if db_node is None:

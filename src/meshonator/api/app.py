@@ -584,7 +584,7 @@ def ui_nodes_batch_configure(
     center_longitude: str = Form(""),
     center_altitude: str = Form(""),
     spread_step_m: str = Form("0"),
-    dry_run: bool = Form(True),
+    dry_run: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
 ) -> RedirectResponse:
@@ -1087,7 +1087,7 @@ def ui_group_assign_node(
 @app.post("/ui/groups/{group_id}/apply-template")
 def ui_group_apply_template(
     group_id: UUID,
-    dry_run: bool = Form(True),
+    dry_run: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("admin")),
 ) -> RedirectResponse:

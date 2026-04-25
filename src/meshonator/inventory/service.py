@@ -25,7 +25,7 @@ class InventoryService:
                     ManagedNodeModel.provider_node_id == node.provider_node_id,
                 )
             )
-            if db_node is None and node.provider_node_id.startswith("local-") and node.provider_node_id != "local-unknown":
+            if db_node is None and node.provider_node_id != "local-unknown":
                 db_node = self.db.scalar(
                     select(ManagedNodeModel)
                     .join(NodeEndpointModel, NodeEndpointModel.node_id == ManagedNodeModel.id)

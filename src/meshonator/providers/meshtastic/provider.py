@@ -112,22 +112,35 @@ class MeshtasticProvider(Provider):
         my_info = info_payload.get("myInfo", {})
         metadata = info_payload.get("metadata", {})
         owner = info_payload.get("owner", {})
+        local_record = info_payload.get("localNodeRecord", {})
+        preferences = info_payload.get("preferences", {})
 
         out: list[ManagedNode] = []
         if local_node is not None:
             short_name = owner.get("shortName")
             long_name = owner.get("longName")
             node_num = my_info.get("myNodeNum") if isinstance(my_info, dict) else None
+            position = local_record.get("position", {}) if isinstance(local_record, dict) else {}
+            last_heard = local_record.get("lastHeard") if isinstance(local_record, dict) else None
+            role = _resolve_role(owner, metadata, preferences, local_record)
             out.append(
                 ManagedNode(
                     provider=ProviderType.MESHTASTIC,
-                    provider_node_id=f"local-{node_num or 'unknown'}",
+                    provider_node_id=_resolve_provider_node_id(owner, node_num, short_name),
                     node_num=node_num,
                     short_name=short_name,
                     long_name=long_name,
+                    role=role,
+                    favorite=bool(local_record.get("isFavorite")) if isinstance(local_record, dict) else False,
                     first_seen=now,
-                    last_seen=now,
+                    last_seen=_ts_to_dt(last_heard) or now,
                     reachable=True,
+                    location=Location(
+                        latitude=position.get("latitude"),
+                        longitude=position.get("longitude"),
+                        altitude=position.get("altitude"),
+                        source=position.get("locationSource"),
+                    ),
                     firmware=FirmwareInfo(version=(metadata.get("firmwareVersion") if isinstance(metadata, dict) else None)),
                     hardware=HardwareInfo(model=(metadata.get("hwModel") if isinstance(metadata, dict) else None)),
                     capabilities=self.capabilities(),
@@ -238,12 +251,14 @@ def _build_meshtastic_info_payload(conn: Any) -> dict[str, Any]:
     metadata = _msg_to_dict(getattr(conn, "metadata", None))
 
     owner: dict[str, Any] = {}
+    local_node_record: dict[str, Any] = {}
     my_node_num = my_info.get("myNodeNum")
     if isinstance(nodes_in_mesh, dict):
         for value in nodes_in_mesh.values():
             if not isinstance(value, dict):
                 continue
             if my_node_num is not None and value.get("num") == my_node_num:
+                local_node_record = value
                 user = value.get("user")
                 if isinstance(user, dict):
                     owner = user
@@ -268,9 +283,48 @@ def _build_meshtastic_info_payload(conn: Any) -> dict[str, Any]:
         "owner": owner,
         "myInfo": my_info,
         "metadata": metadata,
+        "localNodeRecord": to_json_safe(local_node_record),
         "nodesInMesh": to_json_safe(nodes_in_mesh),
         "preferences": preferences,
         "modulePreferences": module_preferences,
         "channels": channels,
         "primaryChannelUrl": primary_url,
     }
+
+
+def _resolve_provider_node_id(owner: dict[str, Any], node_num: Any, short_name: str | None) -> str:
+    owner_id = owner.get("id") if isinstance(owner, dict) else None
+    if isinstance(owner_id, str) and owner_id.strip():
+        return owner_id.strip()
+    if isinstance(node_num, int):
+        return f"node-{node_num}"
+    if short_name and short_name.strip():
+        return short_name.strip()
+    return "local-unknown"
+
+
+def _resolve_role(
+    owner: dict[str, Any],
+    metadata: dict[str, Any],
+    preferences: dict[str, Any],
+    local_record: dict[str, Any],
+) -> str | None:
+    candidates = [
+        owner.get("role") if isinstance(owner, dict) else None,
+        metadata.get("role") if isinstance(metadata, dict) else None,
+        local_record.get("user", {}).get("role") if isinstance(local_record, dict) and isinstance(local_record.get("user"), dict) else None,
+        preferences.get("device", {}).get("role") if isinstance(preferences, dict) and isinstance(preferences.get("device"), dict) else None,
+    ]
+    for value in candidates:
+        if isinstance(value, str) and value.strip():
+            return value.strip().upper()
+    return None
+
+
+def _ts_to_dt(value: Any) -> datetime | None:
+    if not isinstance(value, (int, float)) or value <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    except Exception:
+        return None

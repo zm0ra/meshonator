@@ -9,7 +9,12 @@
     {% for n in nodes %}
     <tr>
       <td>{{ n.provider }}</td>
-      <td><a href="/nodes/{{ n.id }}">{{ n.provider_node_id }}</a></td>
+      <td>
+        <a href="/nodes/{{ n.id }}">{{ n.short_name or n.provider_node_id }}</a>
+        {% if n.short_name and n.provider_node_id %}
+        <div><small>{{ n.provider_node_id }}</small></div>
+        {% endif %}
+      </td>
       <td>{{ n.short_name }} / {{ n.long_name }}</td>
       <td>{{ n.firmware_version }}</td>
       <td>{{ n.hardware_model }}</td>

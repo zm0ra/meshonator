@@ -140,6 +140,13 @@ def _parse_optional_bool(raw: str) -> bool | None:
     raise ValueError(f"Invalid boolean value: {raw}")
 
 
+def _parse_optional_text(raw: str) -> str | None:
+    value = raw.strip()
+    if not value:
+        return None
+    return value
+
+
 def _parse_uuid_list(values: list[str]) -> list[UUID]:
     out: list[UUID] = []
     for value in values:
@@ -307,6 +314,121 @@ def _merge_list_patch(base: list[dict[str, Any]], extra: list[dict[str, Any]]) -
                 merged[key] = value
         out[idx] = merged
     return [out[i] for i in sorted(out)]
+
+
+def _build_fleet_baseline_patch(
+    *,
+    primary_position_precision: str,
+    primary_uplink_enabled: str,
+    primary_downlink_enabled: str,
+    telemetry_device_update_interval: str,
+    telemetry_environment_update_interval: str,
+    telemetry_air_quality_interval: str,
+    telemetry_power_update_interval: str,
+    telemetry_health_update_interval: str,
+    telemetry_device_enabled: str,
+    telemetry_environment_enabled: str,
+    telemetry_air_quality_enabled: str,
+    telemetry_power_enabled: str,
+    telemetry_health_enabled: str,
+    mqtt_address: str,
+    mqtt_username: str,
+    mqtt_password: str,
+    mqtt_root: str,
+    mqtt_enabled: str,
+    mqtt_encryption_enabled: str,
+    mqtt_json_enabled: str,
+    mqtt_map_reporting_enabled: str,
+    mqtt_proxy_to_client_enabled: str,
+    mqtt_tls_enabled: str,
+    network_rsyslog_server: str,
+    network_enabled_protocols: str,
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+    local_patch: dict[str, Any] = {}
+    module_patch: dict[str, Any] = {}
+    channels_patch: list[dict[str, Any]] = []
+
+    network_patch: dict[str, Any] = {}
+    if value := _parse_optional_text(network_rsyslog_server):
+        network_patch["rsyslogServer"] = value
+    value = _parse_optional_int(network_enabled_protocols)
+    if value is not None:
+        network_patch["enabledProtocols"] = value
+    if network_patch:
+        local_patch["network"] = network_patch
+
+    telemetry_patch: dict[str, Any] = {}
+    telemetry_int_map = {
+        "deviceUpdateInterval": telemetry_device_update_interval,
+        "environmentUpdateInterval": telemetry_environment_update_interval,
+        "airQualityInterval": telemetry_air_quality_interval,
+        "powerUpdateInterval": telemetry_power_update_interval,
+        "healthUpdateInterval": telemetry_health_update_interval,
+    }
+    for key, raw in telemetry_int_map.items():
+        value = _parse_optional_int(raw)
+        if value is not None:
+            telemetry_patch[key] = value
+    telemetry_bool_map = {
+        "deviceTelemetryEnabled": telemetry_device_enabled,
+        "environmentMeasurementEnabled": telemetry_environment_enabled,
+        "airQualityEnabled": telemetry_air_quality_enabled,
+        "powerMeasurementEnabled": telemetry_power_enabled,
+        "healthMeasurementEnabled": telemetry_health_enabled,
+    }
+    for key, raw in telemetry_bool_map.items():
+        value = _parse_optional_bool(raw)
+        if value is not None:
+            telemetry_patch[key] = value
+    if telemetry_patch:
+        module_patch["telemetry"] = telemetry_patch
+
+    mqtt_patch: dict[str, Any] = {}
+    mqtt_text_map = {
+        "address": mqtt_address,
+        "username": mqtt_username,
+        "password": mqtt_password,
+        "root": mqtt_root,
+    }
+    for key, raw in mqtt_text_map.items():
+        if value := _parse_optional_text(raw):
+            mqtt_patch[key] = value
+    mqtt_bool_map = {
+        "enabled": mqtt_enabled,
+        "encryptionEnabled": mqtt_encryption_enabled,
+        "jsonEnabled": mqtt_json_enabled,
+        "mapReportingEnabled": mqtt_map_reporting_enabled,
+        "proxyToClientEnabled": mqtt_proxy_to_client_enabled,
+        "tlsEnabled": mqtt_tls_enabled,
+    }
+    for key, raw in mqtt_bool_map.items():
+        value = _parse_optional_bool(raw)
+        if value is not None:
+            mqtt_patch[key] = value
+    if mqtt_patch:
+        module_patch["mqtt"] = mqtt_patch
+
+    channel_settings_patch: dict[str, Any] = {}
+    channel_module_patch: dict[str, Any] = {}
+    value = _parse_optional_int(primary_position_precision)
+    if value is not None:
+        channel_module_patch["positionPrecision"] = value
+    for key, raw in {
+        "uplinkEnabled": primary_uplink_enabled,
+        "downlinkEnabled": primary_downlink_enabled,
+    }.items():
+        value = _parse_optional_bool(raw)
+        if value is not None:
+            channel_settings_patch[key] = value
+    if channel_settings_patch or channel_module_patch:
+        row: dict[str, Any] = {"index": 0}
+        if channel_settings_patch:
+            row["settings"] = channel_settings_patch
+        if channel_module_patch:
+            row["moduleSettings"] = channel_module_patch
+        channels_patch.append(row)
+
+    return local_patch, module_patch, channels_patch
 
 
 def _normalize_roles(raw: str) -> list[str]:
@@ -768,6 +890,31 @@ def ui_nodes_batch_configure(
     center_longitude: str = Form(""),
     center_altitude: str = Form(""),
     spread_step_m: str = Form("0"),
+    primary_position_precision: str = Form(""),
+    primary_uplink_enabled: str = Form("keep"),
+    primary_downlink_enabled: str = Form("keep"),
+    telemetry_device_update_interval: str = Form(""),
+    telemetry_environment_update_interval: str = Form(""),
+    telemetry_air_quality_interval: str = Form(""),
+    telemetry_power_update_interval: str = Form(""),
+    telemetry_health_update_interval: str = Form(""),
+    telemetry_device_enabled: str = Form("keep"),
+    telemetry_environment_enabled: str = Form("keep"),
+    telemetry_air_quality_enabled: str = Form("keep"),
+    telemetry_power_enabled: str = Form("keep"),
+    telemetry_health_enabled: str = Form("keep"),
+    mqtt_address: str = Form(""),
+    mqtt_username: str = Form(""),
+    mqtt_password: str = Form(""),
+    mqtt_root: str = Form(""),
+    mqtt_enabled: str = Form("keep"),
+    mqtt_encryption_enabled: str = Form("keep"),
+    mqtt_json_enabled: str = Form("keep"),
+    mqtt_map_reporting_enabled: str = Form("keep"),
+    mqtt_proxy_to_client_enabled: str = Form("keep"),
+    mqtt_tls_enabled: str = Form("keep"),
+    network_rsyslog_server: str = Form(""),
+    network_enabled_protocols: str = Form(""),
     dry_run: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
@@ -787,6 +934,36 @@ def ui_nodes_batch_configure(
         favorite_value = _parse_optional_bool(favorite_state)
         if favorite_value is not None:
             base_patch["favorite"] = favorite_value
+        baseline_local_patch, baseline_module_patch, baseline_channels_patch = _build_fleet_baseline_patch(
+            primary_position_precision=primary_position_precision,
+            primary_uplink_enabled=primary_uplink_enabled,
+            primary_downlink_enabled=primary_downlink_enabled,
+            telemetry_device_update_interval=telemetry_device_update_interval,
+            telemetry_environment_update_interval=telemetry_environment_update_interval,
+            telemetry_air_quality_interval=telemetry_air_quality_interval,
+            telemetry_power_update_interval=telemetry_power_update_interval,
+            telemetry_health_update_interval=telemetry_health_update_interval,
+            telemetry_device_enabled=telemetry_device_enabled,
+            telemetry_environment_enabled=telemetry_environment_enabled,
+            telemetry_air_quality_enabled=telemetry_air_quality_enabled,
+            telemetry_power_enabled=telemetry_power_enabled,
+            telemetry_health_enabled=telemetry_health_enabled,
+            mqtt_address=mqtt_address,
+            mqtt_username=mqtt_username,
+            mqtt_password=mqtt_password,
+            mqtt_root=mqtt_root,
+            mqtt_enabled=mqtt_enabled,
+            mqtt_encryption_enabled=mqtt_encryption_enabled,
+            mqtt_json_enabled=mqtt_json_enabled,
+            mqtt_map_reporting_enabled=mqtt_map_reporting_enabled,
+            mqtt_proxy_to_client_enabled=mqtt_proxy_to_client_enabled,
+            mqtt_tls_enabled=mqtt_tls_enabled,
+            network_rsyslog_server=network_rsyslog_server,
+            network_enabled_protocols=network_enabled_protocols,
+        )
+        base_patch["local_config_patch"] = _merge_patch(base_patch["local_config_patch"], baseline_local_patch)
+        base_patch["module_config_patch"] = _merge_patch(base_patch["module_config_patch"], baseline_module_patch)
+        base_patch["channels_patch"] = _merge_list_patch(base_patch["channels_patch"], baseline_channels_patch)
 
         location_enabled = False
         location_payload: dict[str, Any] = {

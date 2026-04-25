@@ -173,6 +173,142 @@
     </fieldset>
 
     <fieldset>
+      <legend>Fleet Baseline Overrides</legend>
+      <p class="muted">Use these fields to enforce common channel, telemetry, MQTT and rsyslog settings across selected nodes.</p>
+
+      <label>Primary channel position precision (index 0)
+        <input type="number" min="0" max="32" name="primary_position_precision" placeholder="13" />
+      </label>
+      <label>Primary channel uplink
+        <select name="primary_uplink_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>Primary channel downlink
+        <select name="primary_downlink_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+
+      <label>Telemetry device update interval (seconds)
+        <input type="number" min="0" name="telemetry_device_update_interval" placeholder="300" />
+      </label>
+      <label>Telemetry environment update interval (seconds)
+        <input type="number" min="0" name="telemetry_environment_update_interval" placeholder="300" />
+      </label>
+      <label>Telemetry air quality update interval (seconds)
+        <input type="number" min="0" name="telemetry_air_quality_interval" placeholder="300" />
+      </label>
+      <label>Telemetry power update interval (seconds)
+        <input type="number" min="0" name="telemetry_power_update_interval" placeholder="300" />
+      </label>
+      <label>Telemetry health update interval (seconds)
+        <input type="number" min="0" name="telemetry_health_update_interval" placeholder="300" />
+      </label>
+      <label>Device telemetry enabled
+        <select name="telemetry_device_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>Environment telemetry enabled
+        <select name="telemetry_environment_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>Air quality telemetry enabled
+        <select name="telemetry_air_quality_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>Power telemetry enabled
+        <select name="telemetry_power_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>Health telemetry enabled
+        <select name="telemetry_health_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+
+      <label>MQTT address
+        <input type="text" name="mqtt_address" placeholder="172.30.250.10" />
+      </label>
+      <label>MQTT root
+        <input type="text" name="mqtt_root" placeholder="msh/EU_868" />
+      </label>
+      <label>MQTT username
+        <input type="text" name="mqtt_username" placeholder="mt" />
+      </label>
+      <label>MQTT password
+        <input type="text" name="mqtt_password" placeholder="mt" />
+      </label>
+      <label>MQTT enabled
+        <select name="mqtt_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>MQTT encryption enabled
+        <select name="mqtt_encryption_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>MQTT JSON enabled
+        <select name="mqtt_json_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>MQTT map reporting enabled
+        <select name="mqtt_map_reporting_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>MQTT proxy to client enabled
+        <select name="mqtt_proxy_to_client_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+      <label>MQTT TLS enabled
+        <select name="mqtt_tls_enabled">
+          <option value="keep" selected>Keep current</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+
+      <label>Rsyslog server
+        <input type="text" name="network_rsyslog_server" placeholder="172.30.103.2" />
+      </label>
+      <label>Enabled protocols
+        <input type="number" min="0" name="network_enabled_protocols" placeholder="1" />
+      </label>
+    </fieldset>
+
+    <fieldset>
       <legend>Location Spread</legend>
       <p class="muted">Set a common center and spread nodes around it. Example: 4 nodes with step 50 m.</p>
       <label>Center latitude

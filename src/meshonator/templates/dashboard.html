@@ -4,143 +4,147 @@
   {% if ui_message %}<section class="card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
   {% if ui_error %}<section class="card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
-  <section class="dashboard-atlas card">
-    <div class="atlas-copy">
-      <div>
-        <p class="eyebrow">Fleet Overview</p>
-        <h1>Operational dashboard for the full mesh fleet.</h1>
-        <p class="atlas-summary">A fresh mission board for daily operations: read fleet health in one sweep, launch the two core workflows immediately, and understand what changed without deciphering a wall of equal-weight cards.</p>
-        <div class="atlas-legend">
+  <section class="dashboard-operator card">
+    <aside class="operator-rail">
+      <article class="operator-panel">
+        <p class="eyebrow">Navigation</p>
+        <nav class="operator-nav">
+          <a href="/">Dashboard <span>{{ metrics|length }}</span></a>
+          <a href="/nodes">Nodes <span>{{ fleet_health.reachable }}</span></a>
+          <a href="/jobs">Jobs <span>{{ recent_jobs|length }}</span></a>
+          <a href="/audit">Audit <span>{{ recent_changes|length }}</span></a>
+          <a href="/map">Map <span>Live</span></a>
+          <a href="/settings">Settings <span>{{ fleet_health.provider_count }}</span></a>
+        </nav>
+      </article>
+
+      <article class="operator-panel">
+        <p class="eyebrow">Shift note</p>
+        <p>One scan shows what changed, what is stuck, and what you can trigger next without bouncing through separate admin views.</p>
+      </article>
+
+      <article class="operator-panel">
+        <p class="eyebrow">Metric queue</p>
+        <div class="operator-metric-list">
+          {% for metric in metrics[:4] %}
+          <a href="{{ metric.href }}" class="operator-metric operator-metric-{{ metric.tone }}">
+            <span>{{ metric.label }}</span>
+            <strong>{{ metric.value }}</strong>
+            <small>{{ metric.meta }}</small>
+          </a>
+          {% endfor %}
+        </div>
+      </article>
+    </aside>
+
+    <section class="operator-main">
+      <article class="operator-panel operator-hero">
+        <div>
+          <p class="eyebrow">Mesh operations console</p>
+          <h1>Run the fleet from one tactical surface.</h1>
+        </div>
+        <p class="operator-summary">Operator Deck promotes action first: keep the two critical workflows permanently visible, surface fleet state as a status ribbon, and move jobs plus triage into live lanes instead of a neutral dashboard grid.</p>
+        <div class="atlas-legend operator-legend">
           <span class="status-pill status-pill-{{ worker_status.state }}">{{ worker_status.label }}</span>
           <span class="meta-chip">Last sync {{ latest_sync_at }}</span>
           <span class="meta-chip">Last discovery {{ latest_discovery_at }}</span>
           <span class="meta-chip">Coverage {{ fleet_health.coverage }}</span>
         </div>
-      </div>
+        <div class="operator-status-ribbon">
+          <article>
+            <span class="operator-badge good">Healthy mesh</span>
+            <strong>{{ fleet_health.reachable }}</strong>
+            <div class="operator-meta">Reachable nodes right now</div>
+          </article>
+          <article>
+            <span class="operator-badge warn">Needs review</span>
+            <strong>{{ attention_items|length }}</strong>
+            <div class="operator-meta">Active attention lanes</div>
+          </article>
+          <article>
+            <span class="operator-badge good">Providers online</span>
+            <strong>{{ fleet_health.provider_count }}</strong>
+            <div class="operator-meta">Data sources in rotation</div>
+          </article>
+          <article>
+            <span class="operator-badge warn">Pending queue</span>
+            <strong>{{ recent_jobs|length }}</strong>
+            <div class="operator-meta">Recent operations listed below</div>
+          </article>
+        </div>
+      </article>
 
-      <div class="atlas-highlight-strip">
-        <div class="atlas-highlight">
-          <span class="atlas-highlight-label">Providers</span>
-          <strong class="atlas-highlight-value">{{ fleet_health.provider_count }}</strong>
-          <p>Active data sources</p>
-        </div>
-        <div class="atlas-highlight">
-          <span class="atlas-highlight-label">Recent jobs</span>
-          <strong class="atlas-highlight-value">{{ recent_jobs|length }}</strong>
-          <p>Latest operations listed below</p>
-        </div>
-        <div class="atlas-highlight">
-          <span class="atlas-highlight-label">Attention items</span>
-          <strong class="atlas-highlight-value">{{ attention_items|length }}</strong>
-          <p>Operational flags surfaced now</p>
-        </div>
-      </div>
-    </div>
-
-    <aside class="command-dock">
-      <div class="command-dock-header">
-        <p class="eyebrow">Command Dock</p>
-        <h2>Act first, investigate second.</h2>
-      </div>
-
-      <form method="post" action="/ui/sync/run" class="command-card command-card-sync stack">
-        <div>
-          <h3>Sync Fleet</h3>
-          <p class="muted">Refresh inventory and reachability before touching configuration or triaging stale nodes.</p>
-        </div>
-        <label class="compact-toggle"><input type="checkbox" name="quick" value="true" /> Quick sync only</label>
-        <button type="submit">Run Sync</button>
-      </form>
-
-      <form method="post" action="/ui/discovery/scan" class="command-card command-card-discovery stack">
-        <div>
-          <h3>Discovery scan</h3>
-          <p class="muted">Launch a targeted scan from the dashboard without dropping into a separate admin screen.</p>
-        </div>
-        <label>Provider
-          <select name="provider">
-            {% for provider in providers %}
-            <option value="{{ provider }}">{{ provider }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Hosts
-          <textarea name="hosts_text" rows="2" placeholder="10.10.0.15&#10;node.example.local"></textarea>
-        </label>
-        <details class="command-details">
-          <summary>Advanced discovery fields</summary>
-          <div class="stack mt-1">
-            <label>CIDR ranges
-              <textarea name="cidrs_text" rows="2" placeholder="10.10.0.0/24"></textarea>
-            </label>
-            <label>Manual endpoints
-              <textarea name="endpoints_text" rows="2" placeholder="tcp://10.10.0.20:4403"></textarea>
-            </label>
-            <label>Port override
-              <input type="number" name="port" min="1" max="65535" placeholder="4403" />
-            </label>
+      <section class="operator-command-grid">
+        <form method="post" action="/ui/sync/run" class="operator-command operator-command-sync stack">
+          <div>
+            <p class="eyebrow">Immediate action</p>
+            <h3>Sync fleet now</h3>
+            <p class="muted">Refresh inventory and reachability before touching configuration or triaging stale nodes.</p>
           </div>
-        </details>
-        <button type="submit">Run Discovery</button>
-      </form>
+          <label class="compact-toggle"><input type="checkbox" name="quick" value="true" /> Quick sync only</label>
+          <button type="submit">Run Sync</button>
+        </form>
 
-      <div class="command-links">
-        <a class="command-link" href="/nodes">Open Nodes</a>
-        <a class="command-link" href="/jobs">Open Jobs</a>
-        <a class="command-link" href="/map">Open Map</a>
-        <a class="command-link" href="/settings">Open Settings</a>
-      </div>
-    </aside>
-  </section>
-
-  <section class="dashboard-metric-board">
-    {% for metric in metrics %}
-    <a href="{{ metric.href }}" class="metric-tile metric-tile-{{ metric.tone }}">
-      <span class="metric-tile-label">{{ metric.label }}</span>
-      <strong class="metric-tile-value">{{ metric.value }}</strong>
-      <span class="metric-tile-meta">{{ metric.meta }}</span>
-    </a>
-    {% endfor %}
-  </section>
-
-  <section class="dashboard-insight-grid">
-    <article class="card priority-lane">
-      <div class="lane-header">
-        <div>
-          <p class="eyebrow">Priority Queue</p>
-          <h2>Needs attention</h2>
-        </div>
-      </div>
-      <div class="priority-stack">
-        {% for item in attention_items %}
-        <a href="{{ item.href }}" class="priority-card priority-card-{{ item.tone }}">
-          <div class="priority-card-head">
-            <span class="status-pill status-pill-{{ item.tone }}">{{ item.count }}</span>
-            <strong>{{ item.title }}</strong>
+        <form method="post" action="/ui/discovery/scan" class="operator-command operator-command-discovery stack">
+          <div>
+            <p class="eyebrow">Immediate action</p>
+            <h3>Launch discovery sweep</h3>
+            <p class="muted">Discovery stays equal to sync instead of hiding in a lower-priority support panel.</p>
           </div>
-          <p class="muted">{{ item.description }}</p>
-          <span class="priority-card-cta">{{ item.cta }}</span>
-        </a>
-        {% endfor %}
-      </div>
-    </article>
+          <label>Provider
+            <select name="provider">
+              {% for provider in providers %}
+              <option value="{{ provider }}">{{ provider }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Hosts
+            <textarea name="hosts_text" rows="2" placeholder="10.10.0.15&#10;node.example.local"></textarea>
+          </label>
+          <details class="command-details">
+            <summary>Advanced discovery fields</summary>
+            <div class="stack mt-1">
+              <label>CIDR ranges
+                <textarea name="cidrs_text" rows="2" placeholder="10.10.0.0/24"></textarea>
+              </label>
+              <label>Manual endpoints
+                <textarea name="endpoints_text" rows="2" placeholder="tcp://10.10.0.20:4403"></textarea>
+              </label>
+              <label>Port override
+                <input type="number" name="port" min="1" max="65535" placeholder="4403" />
+              </label>
+            </div>
+          </details>
+          <button type="submit">Run Discovery</button>
+        </form>
 
-    <article class="card activity-lane">
-      <div class="lane-header">
-        <div>
-          <p class="eyebrow">Operational Feed</p>
-          <h2>Jobs and changes in motion</h2>
-        </div>
-      </div>
-      <div class="activity-columns">
-        <section class="timeline-section">
-          <div class="timeline-header">
-            <h3>Recent jobs</h3>
+        <article class="operator-command operator-command-triage">
+          <div>
+            <p class="eyebrow">Triage queue</p>
+            <h3>{{ attention_items|length }} active lanes need a decision</h3>
+            <p class="muted">Failures, stale nodes, favorites drift, and sync gaps are grouped as one action strip instead of scattered cards.</p>
+          </div>
+          <div class="operator-link-grid">
+            <a class="command-link" href="/nodes">Open Nodes</a>
+            <a class="command-link" href="/jobs">Open Jobs</a>
+            <a class="command-link" href="/map">Open Map</a>
+            <a class="command-link" href="/settings">Open Settings</a>
+          </div>
+        </article>
+      </section>
+
+      <section class="operator-live-grid">
+        <article class="operator-panel">
+          <div class="lane-header">
+            <div>
+              <p class="eyebrow">Job stream</p>
+              <h2>Operations in motion</h2>
+            </div>
             <a href="/jobs">View all</a>
           </div>
           <div class="timeline-stack">
             {% for job in recent_jobs %}
-            <a href="/jobs" class="timeline-item">
+            <a href="/jobs" class="timeline-item operator-timeline-item">
               <div>
                 <div class="timeline-title-row">
                   <strong>{{ job.job_type }}</strong>
@@ -150,41 +154,42 @@
               </div>
               <span class="timeline-time">{{ job.created_at }}</span>
             </a>
+            {% else %}
+            <p class="muted">No recent jobs recorded.</p>
             {% endfor %}
           </div>
-        </section>
+        </article>
 
-        <section class="timeline-section timeline-section-audit">
-          <div class="timeline-header">
-            <h3>Recent changes</h3>
-            <a href="/audit">View all</a>
+        <article class="operator-panel">
+          <div class="lane-header">
+            <div>
+              <p class="eyebrow">Attention lane</p>
+              <h2>Triage what is stuck</h2>
+            </div>
+            <a href="/nodes">Open nodes</a>
           </div>
-          <div class="timeline-stack">
-            {% for entry in recent_changes %}
-            <a href="/audit" class="timeline-item">
-              <div>
-                <div class="timeline-title-row">
-                  <strong>{{ entry.action }}</strong>
-                  <span class="status-pill status-pill-neutral">{{ entry.actor }}</span>
-                </div>
-                <p class="muted">{{ entry.source or 'ui' }}</p>
+          <div class="priority-stack">
+            {% for item in attention_items %}
+            <a href="{{ item.href }}" class="priority-card operator-priority-card priority-card-{{ item.tone }}">
+              <div class="priority-card-head">
+                <span class="status-pill status-pill-{{ item.tone }}">{{ item.count }}</span>
+                <strong>{{ item.title }}</strong>
               </div>
-              <span class="timeline-time">{{ entry.created_at }}</span>
+              <p class="muted">{{ item.description }}</p>
+              <span class="priority-card-cta">{{ item.cta }}</span>
             </a>
+            {% else %}
+            <p class="muted">No attention items are active.</p>
             {% endfor %}
           </div>
-        </section>
-      </div>
-    </article>
+        </article>
+      </section>
+    </section>
 
-    <div class="system-stack">
-      <article class="card system-card system-card-state">
-        <div class="lane-header compact-header">
-          <div>
-            <p class="eyebrow">System State</p>
-            <h2>Execution status</h2>
-          </div>
-        </div>
+    <aside class="operator-side">
+      <article class="operator-panel operator-system-panel">
+        <p class="eyebrow">System state</p>
+        <h3>Execution status</h3>
         <p class="muted">{{ worker_status.detail }}</p>
         <div class="state-list">
           {% if latest_sync_job %}
@@ -199,44 +204,65 @@
         </div>
       </article>
 
-      <article class="card system-card">
-        <div class="lane-header compact-header">
-          <div>
-            <p class="eyebrow">Providers</p>
-            <h2>Health snapshot</h2>
-          </div>
-        </div>
+      <article class="operator-panel operator-system-panel">
+        <p class="eyebrow">Provider posture</p>
+        <h3>Health snapshot</h3>
         <div class="provider-stack">
           {% for provider in providers_health %}
-          <div class="provider-line">
+          <div class="provider-line operator-provider-line">
             <div class="timeline-title-row">
               <strong>{{ provider.provider }}</strong>
               <span class="status-pill status-pill-{{ 'success' if provider.status == 'ok' else 'warning' }}">{{ provider.status }}</span>
             </div>
             <p class="muted">{{ provider.details if provider.details else 'No extra provider details reported.' }}</p>
           </div>
+          {% else %}
+          <p class="muted">No provider diagnostics reported.</p>
           {% endfor %}
         </div>
       </article>
 
-      <article class="card system-card">
-        <div class="lane-header compact-header">
-          <div>
-            <p class="eyebrow">Coverage</p>
-            <h2>Fleet distribution</h2>
-          </div>
-        </div>
+      <article class="operator-panel operator-system-panel">
+        <p class="eyebrow">Coverage lanes</p>
+        <h3>Fleet distribution</h3>
         <div class="distribution-list">
           {% for item in provider_summary %}
-          <div class="distribution-row">
+          <div class="distribution-row operator-distribution-row">
             <span>{{ item[0] }}</span>
             <strong>{{ item[1] }} nodes</strong>
           </div>
+          {% else %}
+          <p class="muted">No provider distribution data available.</p>
           {% endfor %}
         </div>
-        <p class="muted">Use the map to validate coordinates and the nodes workspace to correct missing metadata.</p>
       </article>
-    </div>
+
+      <article class="operator-panel operator-system-panel">
+        <div class="lane-header compact-header">
+          <div>
+            <p class="eyebrow">Recent field notes</p>
+            <h3>Latest changes</h3>
+          </div>
+          <a href="/audit">View all</a>
+        </div>
+        <div class="timeline-stack">
+          {% for entry in recent_changes %}
+          <a href="/audit" class="timeline-item operator-timeline-item">
+            <div>
+              <div class="timeline-title-row">
+                <strong>{{ entry.action }}</strong>
+                <span class="status-pill status-pill-neutral">{{ entry.actor }}</span>
+              </div>
+              <p class="muted">{{ entry.source or 'ui' }}</p>
+            </div>
+            <span class="timeline-time">{{ entry.created_at }}</span>
+          </a>
+          {% else %}
+          <p class="muted">No recent audit entries recorded.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </aside>
   </section>
 </section>
 {% endblock %}

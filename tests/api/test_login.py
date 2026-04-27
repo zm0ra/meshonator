@@ -9,5 +9,5 @@ def test_login_and_dashboard_access(client, db):
     home = client.get('/', cookies=cookies)
     assert home.status_code == 200
     body = home.text
-    assert "Fleet Overview" in body
-    assert "Operational dashboard for the full mesh fleet." in body
+    assert "Mesh operations console" in body
+    assert "Run the fleet from one tactical surface." in body

@@ -105,6 +105,23 @@
       <label><input type="checkbox" name="dry_run" value="true" checked /> Dry run</label>
       <button type="submit">Queue Template Apply</button>
     </form>
+    <form method="post" action="/ui/groups/{{ entry.group.id }}/nodedb/routing-favorites" class="stack mt-1">
+      <label>NodeDB action
+        <select name="action">
+          <option value="set_favorite">Set favorite node</option>
+          <option value="remove_favorite">Remove favorite node</option>
+          <option value="remove_node">Remove node from NodeDB</option>
+        </select>
+      </label>
+      <label>Source max hops
+        <input type="number" name="source_max_hops" min="0" value="0" />
+      </label>
+      <label>Allowed source/target roles
+        <input type="text" name="allowed_roles_text" value="ROUTER,ROUTER_LATE,CLIENT_BASE" />
+      </label>
+      <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+      <button type="submit">Queue NodeDB Favorites For Group</button>
+    </form>
   </article>
   <article class="card">
     <h3>Assign Node</h3>

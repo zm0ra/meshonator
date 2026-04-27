@@ -216,7 +216,7 @@ def test_operations_service_mutate_node_db_disconnects_and_returns_summary(db) -
 
     node = ManagedNodeModel(
         provider="meshtastic",
-        provider_node_id="!dst",
+        provider_node_id="!dst-mut",
         short_name="DST",
         first_seen=datetime.now(timezone.utc),
         last_seen=datetime.now(timezone.utc),

@@ -37,6 +37,7 @@ from meshonator.inventory.service import InventoryService
 from meshonator.jobs.service import JobsService
 from meshonator.map.service import MapService
 from meshonator.jobs.queue import (
+    enqueue_bulk_nodedb_job,
     enqueue_discovery_job,
     enqueue_group_patch_job,
     enqueue_multi_node_patch_job,
@@ -638,6 +639,27 @@ def _find_managed_nodes_for_candidates(
             )
         ).all()
     )
+
+
+def _collect_routing_favorite_targets(
+    *,
+    db: Session,
+    source_nodes: list[ManagedNodeModel],
+    allowed_roles: set[str],
+    max_hops: int,
+) -> list[str]:
+    target_ids: set[str] = set()
+    for source in source_nodes:
+        candidates = _filter_zero_hop_candidates(
+            source.raw_metadata or {},
+            max_hops=max_hops,
+            allowed_roles=allowed_roles,
+        )
+        for item in candidates:
+            node_id = item.get("id")
+            if isinstance(node_id, str) and node_id.strip():
+                target_ids.add(node_id.strip())
+    return sorted(target_ids)
 
 
 def _channels_to_patch(channels: list[Any]) -> list[dict[str, Any]]:
@@ -1350,6 +1372,56 @@ def ui_nodes_favorite_all(
         return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
 
 
+@app.post("/ui/nodes/nodedb/routing-favorites")
+def ui_nodes_nodedb_routing_favorites(
+    action: str = Form("set_favorite"),
+    allowed_roles_text: str = Form("ROUTER\nROUTER_LATE\nCLIENT_BASE"),
+    source_max_hops: int = Form(0),
+    dry_run: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        if action not in {"set_favorite", "remove_favorite", "remove_node"}:
+            return RedirectResponse(url="/nodes?error=Unsupported+NodeDB+action", status_code=303)
+        all_nodes = InventoryService(db).list_nodes()
+        if not all_nodes:
+            return RedirectResponse(url="/nodes?error=No+managed+nodes+found", status_code=303)
+        allowed_roles = set(_normalize_roles(allowed_roles_text))
+        source_nodes = [
+            n for n in all_nodes
+            if str(n.role or "").upper().strip() in allowed_roles
+        ]
+        target_node_ids = _collect_routing_favorite_targets(
+            db=db,
+            source_nodes=source_nodes,
+            allowed_roles=allowed_roles,
+            max_hops=source_max_hops,
+        )
+        if not target_node_ids:
+            return RedirectResponse(url="/nodes?error=No+routing+targets+matched+criteria", status_code=303)
+        job = JobsService(db).create(
+            job_type="bulk_nodedb_mutation",
+            requested_by=user.username,
+            source="ui",
+            payload={
+                "destination_node_ids": [str(n.id) for n in all_nodes if n.id is not None],
+                "target_node_ids": target_node_ids,
+                "action": action,
+                "exclude_self": True,
+                "dry_run": dry_run,
+            },
+        )
+        enqueue_bulk_nodedb_job(job.id, registry)
+        message = quote_plus(
+            f"Queued bulk NodeDB {action} for {len(all_nodes)} nodes (targets: {len(target_node_ids)}). Job ID: {job.id}"
+        )
+        return RedirectResponse(url=f"/nodes?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Bulk NodeDB routing favorites failed: {exc}")
+        return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
+
+
 @app.post("/ui/nodes/compare-sync")
 def ui_nodes_compare_sync(
     source_node_id: UUID = Form(...),
@@ -2030,6 +2102,62 @@ def ui_group_apply_template(
     enqueue_group_patch_job(job.id, registry)
     message = quote_plus(f"Group template queued. Job ID: {job.id}")
     return RedirectResponse(url=f"/groups?message={message}", status_code=303)
+
+
+@app.post("/ui/groups/{group_id}/nodedb/routing-favorites")
+def ui_group_nodedb_routing_favorites(
+    group_id: UUID,
+    action: str = Form("set_favorite"),
+    allowed_roles_text: str = Form("ROUTER\nROUTER_LATE\nCLIENT_BASE"),
+    source_max_hops: int = Form(0),
+    dry_run: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        if action not in {"set_favorite", "remove_favorite", "remove_node"}:
+            return RedirectResponse(url="/groups?error=Unsupported+NodeDB+action", status_code=303)
+        groups = GroupsService(db)
+        group = groups.get_group(group_id)
+        if group is None:
+            return RedirectResponse(url="/groups?error=Group+not+found", status_code=303)
+        resolved = groups.resolve_all_members(group)
+        if not resolved:
+            return RedirectResponse(url="/groups?error=Group+has+no+resolved+members", status_code=303)
+        allowed_roles = set(_normalize_roles(allowed_roles_text))
+        source_nodes = [
+            n for n in resolved
+            if str(n.role or "").upper().strip() in allowed_roles
+        ]
+        target_node_ids = _collect_routing_favorite_targets(
+            db=db,
+            source_nodes=source_nodes,
+            allowed_roles=allowed_roles,
+            max_hops=source_max_hops,
+        )
+        if not target_node_ids:
+            return RedirectResponse(url="/groups?error=No+routing+targets+matched+criteria", status_code=303)
+        job = JobsService(db).create(
+            job_type="bulk_nodedb_mutation",
+            requested_by=user.username,
+            source="ui",
+            payload={
+                "destination_node_ids": [str(n.id) for n in resolved if n.id is not None],
+                "target_node_ids": target_node_ids,
+                "action": action,
+                "exclude_self": True,
+                "dry_run": dry_run,
+                "group_id": str(group_id),
+            },
+        )
+        enqueue_bulk_nodedb_job(job.id, registry)
+        message = quote_plus(
+            f"Queued group NodeDB {action} for {len(resolved)} nodes (targets: {len(target_node_ids)}). Job ID: {job.id}"
+        )
+        return RedirectResponse(url=f"/groups?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Group NodeDB routing favorites failed: {exc}")
+        return RedirectResponse(url=f"/groups?error={error}", status_code=303)
 
 
 @app.post("/ui/groups/{group_id}/configure")

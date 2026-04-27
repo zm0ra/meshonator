@@ -56,6 +56,11 @@ def enqueue_node_nodedb_job(job_id: UUID, registry: ProviderRegistry) -> None:
         executor.submit(_run_node_nodedb_job, job_id, registry)
 
 
+def enqueue_bulk_nodedb_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    if settings.job_executor_mode == "local":
+        executor.submit(_run_bulk_nodedb_job, job_id, registry)
+
+
 def run_job(job_id: UUID, registry: ProviderRegistry) -> None:
     with SessionLocal() as db:
         job = db.get(JobModel, job_id)
@@ -75,6 +80,8 @@ def run_job(job_id: UUID, registry: ProviderRegistry) -> None:
         _run_multi_node_patch_job(job_id, registry)
     elif job_type == "node_nodedb_mutation":
         _run_node_nodedb_job(job_id, registry)
+    elif job_type == "bulk_nodedb_mutation":
+        _run_bulk_nodedb_job(job_id, registry)
     else:
         with SessionLocal() as db:
             jobs = JobsService(db)
@@ -85,6 +92,114 @@ def run_job(job_id: UUID, registry: ProviderRegistry) -> None:
                 message=f"Unsupported job type: {job_type}",
                 details={},
             )
+            jobs.finish(job_id, success=False)
+
+
+def _run_bulk_nodedb_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    with SessionLocal() as db:
+        jobs = JobsService(db)
+        job = db.get(JobModel, job_id)
+        if job is None:
+            return
+        jobs.start(job_id)
+        payload = job.payload or {}
+        destination_node_ids = payload.get("destination_node_ids", [])
+        action = str(payload.get("action", "")).strip()
+        target_node_ids = payload.get("target_node_ids", [])
+        dry_run = bool(payload.get("dry_run", True))
+        exclude_self = bool(payload.get("exclude_self", True))
+
+        try:
+            if not action:
+                raise ValueError("Missing action")
+            if not isinstance(destination_node_ids, list) or not destination_node_ids:
+                raise ValueError("No destination nodes selected")
+            if not isinstance(target_node_ids, list) or not target_node_ids:
+                raise ValueError("No target nodes selected")
+            destinations = [UUID(item) for item in destination_node_ids]
+            targets = [str(item).strip() for item in target_node_ids if isinstance(item, str) and str(item).strip()]
+            if not targets:
+                raise ValueError("No valid target node IDs provided")
+
+            ops = OperationsService(db, registry)
+            destination_success = 0
+            destination_fail = 0
+            for destination_id in destinations:
+                destination = db.get(ManagedNodeModel, destination_id)
+                if destination is None:
+                    jobs.add_result(
+                        job_id=job_id,
+                        status="failed",
+                        node_id=destination_id,
+                        message="Destination node not found",
+                        details={},
+                    )
+                    destination_fail += 1
+                    continue
+                destination_targets = targets
+                if exclude_self and destination.provider_node_id:
+                    destination_targets = [item for item in targets if item != destination.provider_node_id]
+                if not destination_targets:
+                    jobs.add_result(
+                        job_id=job_id,
+                        status="success",
+                        node_id=destination_id,
+                        message="Skipped: no remaining targets after self exclusion",
+                        details={},
+                    )
+                    destination_success += 1
+                    continue
+                try:
+                    result = ops.mutate_node_db(
+                        destination_node_id=destination_id,
+                        action=action,
+                        target_node_ids=destination_targets,
+                        actor=job.requested_by,
+                        source=job.source,
+                        dry_run=dry_run,
+                    )
+                    status = "success" if result.get("failed_count", 0) == 0 else "failed"
+                    jobs.add_result(
+                        job_id=job_id,
+                        status=status,
+                        node_id=destination_id,
+                        message=f"NodeDB {action}: {result.get('applied_count', 0)} ok, {result.get('failed_count', 0)} failed",
+                        details={"result": result},
+                    )
+                    if status == "success":
+                        destination_success += 1
+                    else:
+                        destination_fail += 1
+                except Exception as node_exc:
+                    db.rollback()
+                    jobs.add_result(
+                        job_id=job_id,
+                        status="failed",
+                        node_id=destination_id,
+                        message=str(node_exc),
+                        details={},
+                    )
+                    destination_fail += 1
+
+            jobs.finish(job_id, success=(destination_fail == 0))
+            AuditService(db).log(
+                actor=job.requested_by,
+                source=job.source,
+                action="node.nodedb.bulk.queued",
+                metadata={
+                    "dry_run": dry_run,
+                    "action": action,
+                    "destination_count": len(destinations),
+                    "target_count": len(targets),
+                    "exclude_self": exclude_self,
+                    "success_count": destination_success,
+                    "fail_count": destination_fail,
+                    "completed_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        except Exception as exc:
+            db.rollback()
+            jobs.add_result(job_id=job_id, status="failed", node_id=None, message=str(exc), details={})
             jobs.finish(job_id, success=False)
 
 

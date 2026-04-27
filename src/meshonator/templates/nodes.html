@@ -13,6 +13,23 @@
     <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
     <button type="submit">Queue Favorite=true For All Managed Nodes</button>
   </form>
+  <form method="post" action="/ui/nodes/nodedb/routing-favorites" class="inline-actions">
+    <label>NodeDB action
+      <select name="action">
+        <option value="set_favorite">Set favorite node</option>
+        <option value="remove_favorite">Remove favorite node</option>
+        <option value="remove_node">Remove node from NodeDB</option>
+      </select>
+    </label>
+    <label>Source max hops
+      <input type="number" name="source_max_hops" min="0" value="0" />
+    </label>
+    <label>Allowed source/target roles
+      <input type="text" name="allowed_roles_text" value="ROUTER,ROUTER_LATE,CLIENT_BASE" />
+    </label>
+    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+    <button type="submit">Queue NodeDB Favorites For Fleet</button>
+  </form>
   <table>
     <tr>
       <th>Select</th><th>Provider</th><th>Node ID</th><th>Name</th><th>IP</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>

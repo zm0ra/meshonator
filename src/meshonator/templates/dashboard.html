@@ -10,7 +10,7 @@
         <p class="eyebrow">Navigation</p>
         <nav class="operator-nav">
           <a href="/">Dashboard <span>{{ metrics|length }}</span></a>
-          <a href="/nodes">Nodes <span>{{ fleet_health.reachable }}</span></a>
+          <a href="/nodes">Nodes <span>{{ metrics[0].value }}</span></a>
           <a href="/jobs">Jobs <span>{{ recent_jobs|length }}</span></a>
           <a href="/audit">Audit <span>{{ recent_changes|length }}</span></a>
           <a href="/map">Map <span>Live</span></a>
@@ -53,7 +53,7 @@
         <div class="operator-status-ribbon">
           <article>
             <span class="operator-badge good">Healthy mesh</span>
-            <strong>{{ fleet_health.reachable }}</strong>
+            <strong>{{ metrics[1].value }}</strong>
             <div class="operator-meta">Reachable nodes right now</div>
           </article>
           <article>

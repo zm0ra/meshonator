@@ -1,0 +1,536 @@
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
+
+.mockup-body {
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.mockup-shell {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.mockup-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.mockup-brand {
+  display: grid;
+  gap: 4px;
+}
+
+.mockup-brand strong {
+  font-size: 1.45rem;
+  letter-spacing: -0.04em;
+}
+
+.mockup-brand span,
+.mockup-note,
+.mockup-mini,
+.mockup-kicker {
+  opacity: 0.72;
+}
+
+.mockup-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mockup-links a,
+.mockup-chip {
+  border-radius: 999px;
+  padding: 10px 14px;
+  text-decoration: none;
+}
+
+.mockup-links a.active {
+  font-weight: 700;
+}
+
+.mockup-index {
+  display: grid;
+  gap: 18px;
+}
+
+.mockup-index-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.mockup-choice {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 28px;
+  text-decoration: none;
+  min-height: 300px;
+}
+
+.mockup-choice strong {
+  font-size: 1.8rem;
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+
+.mockup-choice ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.operator-body {
+  background:
+    radial-gradient(circle at top left, rgba(68, 214, 177, 0.14), transparent 28%),
+    linear-gradient(180deg, #081317, #0e2328 58%, #101c1f 100%);
+  color: #e7f7f1;
+}
+
+.operator-body .mockup-links a,
+.operator-body .mockup-chip {
+  border: 1px solid rgba(177, 221, 213, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.operator-body .mockup-links a.active {
+  background: #4be0b2;
+  color: #081317;
+}
+
+.operator-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
+  gap: 18px;
+}
+
+.operator-rail,
+.operator-main,
+.operator-side {
+  display: grid;
+  gap: 18px;
+}
+
+.operator-panel {
+  border: 1px solid rgba(177, 221, 213, 0.12);
+  border-radius: 28px;
+  background: rgba(6, 17, 21, 0.72);
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.28);
+}
+
+.operator-rail {
+  align-content: start;
+}
+
+.operator-rail .operator-panel,
+.operator-side .operator-panel {
+  padding: 18px;
+}
+
+.operator-nav {
+  display: grid;
+  gap: 10px;
+}
+
+.operator-nav a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-decoration: none;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.operator-main .operator-panel {
+  padding: 22px;
+}
+
+.operator-hero {
+  display: grid;
+  gap: 18px;
+}
+
+.operator-hero h1,
+.atlas-hero h1,
+.journal-hero h1 {
+  margin: 0;
+  font-size: clamp(3rem, 5vw, 5.4rem);
+  line-height: 0.9;
+  letter-spacing: -0.06em;
+}
+
+.operator-status-ribbon {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.operator-status-ribbon article,
+.operator-command-grid article,
+.operator-timeline article,
+.operator-side article {
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.operator-status-ribbon strong,
+.atlas-fact strong,
+.journal-kpi strong {
+  display: block;
+  font-size: 2rem;
+  margin-top: 10px;
+}
+
+.operator-command-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.operator-command-grid article:last-child {
+  grid-column: span 2;
+}
+
+.operator-timeline {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 12px;
+}
+
+.operator-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.operator-list li,
+.journal-feed li {
+  list-style: none;
+}
+
+.operator-badge,
+.atlas-badge,
+.journal-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.operator-badge.good {
+  background: rgba(75, 224, 178, 0.18);
+  color: #81f3cf;
+}
+
+.operator-badge.warn {
+  background: rgba(255, 190, 92, 0.16);
+  color: #ffd68d;
+}
+
+.atlas-body {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 126, 67, 0.18), transparent 24%),
+    radial-gradient(circle at 80% 10%, rgba(66, 98, 255, 0.12), transparent 22%),
+    linear-gradient(180deg, #f4ede5, #efe8df 40%, #ebeef3 100%);
+  color: #17141f;
+}
+
+.atlas-body .mockup-links a,
+.atlas-body .mockup-chip {
+  border: 1px solid rgba(23, 20, 31, 0.09);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.atlas-body .mockup-links a.active {
+  background: #17141f;
+  color: #fff6ee;
+}
+
+.atlas-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) 360px;
+  gap: 18px;
+}
+
+.atlas-main,
+.atlas-side {
+  display: grid;
+  gap: 18px;
+}
+
+.atlas-card {
+  border-radius: 30px;
+  background: rgba(255, 250, 244, 0.78);
+  border: 1px solid rgba(23, 20, 31, 0.08);
+  box-shadow: 0 28px 60px rgba(48, 35, 24, 0.08);
+}
+
+.atlas-hero {
+  padding: 28px;
+  display: grid;
+  gap: 18px;
+}
+
+.atlas-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.atlas-fact {
+  padding: 14px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.atlas-board {
+  min-height: 440px;
+  position: relative;
+  overflow: hidden;
+  padding: 28px;
+}
+
+.atlas-gridlines {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(23, 20, 31, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 20, 31, 0.05) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(180deg, black, transparent 95%);
+}
+
+.atlas-floating {
+  position: absolute;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 22px;
+  backdrop-filter: blur(10px);
+}
+
+.atlas-floating.core {
+  left: 34px;
+  top: 40px;
+  width: 320px;
+  background: rgba(28, 25, 35, 0.9);
+  color: #fff;
+}
+
+.atlas-floating.audit {
+  right: 24px;
+  top: 84px;
+  width: 260px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.atlas-floating.actions {
+  left: 120px;
+  bottom: 34px;
+  width: 280px;
+  background: rgba(255, 244, 233, 0.92);
+}
+
+.atlas-floating.mapcallout {
+  right: 90px;
+  bottom: 32px;
+  width: 240px;
+  background: rgba(239, 244, 255, 0.92);
+}
+
+.atlas-side .atlas-card {
+  padding: 20px;
+}
+
+.atlas-list,
+.journal-feed {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.atlas-list li {
+  list-style: none;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.atlas-badge.hot {
+  background: rgba(255, 126, 67, 0.16);
+  color: #ad4419;
+}
+
+.atlas-badge.cool {
+  background: rgba(66, 98, 255, 0.12);
+  color: #2a47c7;
+}
+
+.journal-body {
+  background: #f3f0ea;
+  color: #1d1714;
+  font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
+}
+
+.journal-body .mockup-topbar,
+.journal-body .mockup-note,
+.journal-body .mockup-mini,
+.journal-body .mockup-links a,
+.journal-body .mockup-chip,
+.journal-body .journal-feed small,
+.journal-body .journal-kpi {
+  font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+}
+
+.journal-body .mockup-links a,
+.journal-body .mockup-chip {
+  border: 1px solid rgba(29, 23, 20, 0.12);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.journal-body .mockup-links a.active {
+  background: #1d1714;
+  color: #f5eee6;
+}
+
+.journal-stage {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr;
+  gap: 18px;
+}
+
+.journal-main,
+.journal-side {
+  display: grid;
+  gap: 18px;
+}
+
+.journal-paper {
+  border-radius: 32px;
+  border: 1px solid rgba(29, 23, 20, 0.12);
+  background: linear-gradient(180deg, rgba(255, 252, 246, 0.96), rgba(252, 248, 240, 0.96));
+  box-shadow: 0 20px 48px rgba(53, 39, 23, 0.08);
+}
+
+.journal-hero {
+  padding: 28px;
+  display: grid;
+  gap: 18px;
+}
+
+.journal-columns {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 18px;
+  padding: 0 28px 28px;
+}
+
+.journal-feature {
+  display: grid;
+  gap: 14px;
+}
+
+.journal-kpis {
+  display: grid;
+  gap: 10px;
+}
+
+.journal-kpi {
+  padding: 14px;
+  border-top: 2px solid rgba(29, 23, 20, 0.14);
+}
+
+.journal-kpi strong {
+  font-size: 2.2rem;
+  line-height: 0.95;
+}
+
+.journal-feed li {
+  padding: 14px 0;
+  border-top: 1px solid rgba(29, 23, 20, 0.12);
+}
+
+.journal-side .journal-paper {
+  padding: 22px;
+}
+
+.journal-badge.alert {
+  background: rgba(188, 72, 49, 0.12);
+  color: #9f3423;
+}
+
+.journal-badge.calm {
+  background: rgba(49, 112, 111, 0.12);
+  color: #285e5d;
+}
+
+@media (max-width: 1100px) {
+  .operator-layout,
+  .atlas-stage,
+  .journal-stage,
+  .journal-columns,
+  .operator-timeline {
+    grid-template-columns: 1fr;
+  }
+
+  .operator-status-ribbon,
+  .atlas-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .mockup-shell {
+    padding: 16px;
+  }
+
+  .mockup-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .operator-layout,
+  .atlas-stage,
+  .journal-stage,
+  .operator-command-grid,
+  .operator-status-ribbon,
+  .atlas-kpis,
+  .mockup-index-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .atlas-board {
+    min-height: 720px;
+  }
+
+  .atlas-floating {
+    position: static;
+    width: auto;
+    margin-top: 12px;
+  }
+}

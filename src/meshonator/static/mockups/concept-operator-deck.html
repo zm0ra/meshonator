@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Operator Deck</title>
+    <link rel="stylesheet" href="dashboard-concepts.css" />
+  </head>
+  <body class="mockup-body operator-body">
+    <main class="mockup-shell">
+      <header class="mockup-topbar">
+        <div class="mockup-brand">
+          <strong>Concept 1: Operator Deck</strong>
+          <span>Tactical, dense, command-first.</span>
+        </div>
+        <nav class="mockup-links">
+          <a href="index.html">All concepts</a>
+          <a class="active" href="concept-operator-deck.html">Operator Deck</a>
+          <a href="concept-atlas-panel.html">Atlas Panel</a>
+          <a href="concept-journal-board.html">Field Journal</a>
+        </nav>
+      </header>
+
+      <section class="operator-layout">
+        <aside class="operator-rail">
+          <div class="operator-panel">
+            <div class="mockup-kicker">Navigation</div>
+            <div class="operator-nav" style="margin-top: 14px;">
+              <a href="#">Dashboard <span>09</span></a>
+              <a href="#">Nodes <span>172</span></a>
+              <a href="#">Jobs <span>04</span></a>
+              <a href="#">Audit <span>31</span></a>
+              <a href="#">Map <span>Live</span></a>
+              <a href="#">Settings <span>12</span></a>
+            </div>
+          </div>
+
+          <div class="operator-panel">
+            <div class="mockup-kicker">Shift note</div>
+            <p>One scan shows what changed, what is stuck, and what you can trigger next without moving between panels.</p>
+          </div>
+        </aside>
+
+        <section class="operator-main">
+          <div class="operator-panel operator-hero">
+            <div>
+              <div class="mockup-kicker">Mesh operations console</div>
+              <h1>Run the fleet from one tactical surface.</h1>
+            </div>
+            <p class="mockup-note">This direction stops pretending the dashboard is a summary report. It becomes the operator's working desk: command first, state second, history third.</p>
+            <div class="operator-status-ribbon">
+              <article><span class="operator-badge good">Healthy mesh</span><strong>172</strong><div class="mockup-mini">Reachable nodes</div></article>
+              <article><span class="operator-badge warn">Needs review</span><strong>11</strong><div class="mockup-mini">Offline or stale</div></article>
+              <article><span class="operator-badge good">Executor online</span><strong>04</strong><div class="mockup-mini">Workers active</div></article>
+              <article><span class="operator-badge warn">Pending queue</span><strong>07</strong><div class="mockup-mini">Open jobs</div></article>
+            </div>
+          </div>
+
+          <div class="operator-command-grid">
+            <article>
+              <div class="mockup-kicker">Immediate action</div>
+              <h3>Sync fleet now</h3>
+              <p class="mockup-note">Primary action stays visible at all times, with queue impact and freshness target next to it.</p>
+            </article>
+            <article>
+              <div class="mockup-kicker">Immediate action</div>
+              <h3>Launch discovery sweep</h3>
+              <p class="mockup-note">Discovery becomes equal to sync, not buried under supporting content.</p>
+            </article>
+            <article>
+              <div class="mockup-kicker">Triage queue</div>
+              <h3>11 stale nodes need decision</h3>
+              <p class="mockup-note">Failures, stale nodes, and favorites drift are promoted into one action strip instead of separate cards.</p>
+            </article>
+          </div>
+
+          <div class="operator-timeline">
+            <article>
+              <div class="mockup-kicker">Job stream</div>
+              <ul class="operator-list">
+                <li><strong>09:14</strong> sync_all finished successfully from scheduler</li>
+                <li><strong>09:06</strong> discovery queued for meshtastic provider</li>
+                <li><strong>08:57</strong> favorite policy patch applied to 12 nodes</li>
+                <li><strong>08:34</strong> worker heartbeat recovered after restart</li>
+              </ul>
+            </article>
+            <article>
+              <div class="mockup-kicker">Attention lane</div>
+              <ul class="operator-list">
+                <li><span class="operator-badge warn">Warning</span> 7 nodes stale for more than 12h</li>
+                <li><span class="operator-badge good">Stable</span> provider inventory aligned</li>
+                <li><span class="operator-badge warn">Pending</span> 2 config jobs awaiting executor</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <aside class="operator-side">
+          <article class="operator-panel">
+            <div class="mockup-kicker">System state</div>
+            <h3>Internal executor</h3>
+            <p class="mockup-note">Last sync 09:04 UTC. Discovery not run today. Coverage 172/183.</p>
+          </article>
+          <article class="operator-panel">
+            <div class="mockup-kicker">Provider posture</div>
+            <ul class="operator-list">
+              <li>meshtastic: inventory healthy</li>
+              <li>meshcore: disabled</li>
+              <li>external jobs: idle</li>
+            </ul>
+          </article>
+          <article class="operator-panel">
+            <div class="mockup-kicker">Why this is different</div>
+            <p class="mockup-note">No hero + card grid + lower cards stack. This is a console with rail, command strip, and live lanes.</p>
+          </article>
+        </aside>
+      </section>
+    </main>
+  </body>
+</html>

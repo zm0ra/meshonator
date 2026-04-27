@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Field Journal</title>
+    <link rel="stylesheet" href="dashboard-concepts.css" />
+  </head>
+  <body class="mockup-body journal-body">
+    <main class="mockup-shell">
+      <header class="mockup-topbar">
+        <div class="mockup-brand">
+          <strong>Concept 3: Field Journal</strong>
+          <span>Editorial, quiet, briefing-first.</span>
+        </div>
+        <nav class="mockup-links">
+          <a href="index.html">All concepts</a>
+          <a href="concept-operator-deck.html">Operator Deck</a>
+          <a href="concept-atlas-panel.html">Atlas Panel</a>
+          <a class="active" href="concept-journal-board.html">Field Journal</a>
+        </nav>
+      </header>
+
+      <section class="journal-stage">
+        <section class="journal-main">
+          <article class="journal-paper journal-hero">
+            <div class="mockup-kicker">Daily briefing</div>
+            <h1>The fleet should read like a briefing, not like a pile of boxes.</h1>
+            <p class="mockup-note">This direction privileges readability and flow. Operators scan one primary story, then supporting queues, then recent field events.</p>
+          </article>
+
+          <article class="journal-paper">
+            <div class="journal-columns">
+              <div class="journal-feature">
+                <div class="mockup-kicker">Lead story</div>
+                <p>Coverage is stable after the 09:04 sync, but seven nodes remain stale on the south corridor and two queued jobs are waiting for confirmation. Discovery has not been run today.</p>
+                <p>The interface emphasizes this as one operational story instead of forcing the user to infer it from separate cards.</p>
+              </div>
+              <div class="journal-kpis">
+                <div class="journal-kpi"><span class="journal-badge calm">Reachable</span><strong>172</strong></div>
+                <div class="journal-kpi"><span class="journal-badge alert">Stale</span><strong>11</strong></div>
+                <div class="journal-kpi"><span class="journal-badge calm">Pending jobs</span><strong>7</strong></div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <aside class="journal-side">
+          <article class="journal-paper">
+            <div class="mockup-kicker">Action editor</div>
+            <p>Sync fleet, launch discovery, and open nodes become an editorial action strip rather than dashboard widgets.</p>
+          </article>
+          <article class="journal-paper">
+            <div class="mockup-kicker">Recent field notes</div>
+            <ul class="journal-feed">
+              <li><strong>09:14</strong><br /><small>sync_all completed successfully</small></li>
+              <li><strong>09:06</strong><br /><small>discovery request prepared for meshtastic</small></li>
+              <li><strong>08:57</strong><br /><small>favorite baseline patch applied</small></li>
+              <li><strong>08:34</strong><br /><small>worker heartbeat recovered</small></li>
+            </ul>
+          </article>
+          <article class="journal-paper">
+            <div class="mockup-kicker">Why this is different</div>
+            <p>This is closer to a premium operations report or briefing sheet. It trades dashboard density for calm scanability and clear narrative hierarchy.</p>
+          </article>
+        </aside>
+      </section>
+    </main>
+  </body>
+</html>

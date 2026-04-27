@@ -1,90 +1,226 @@
 {% extends "base.html" %}
 {% block content %}
-{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
-{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
-{% if job_executor_mode == "external" %}
-<section class="card">
-  <p class="warn"><b>External executor mode is enabled.</b> Jobs are queued by the UI and must be executed by the host worker process.</p>
-  <p class="muted">Start worker on host: <code>DATABASE_URL=postgresql+psycopg://meshonator:meshonator@localhost:5432/meshonator .venv/bin/meshonator jobs-worker</code></p>
-  {% if worker %}
-  <p><b>Worker status:</b> {% if worker_online %}<span class="success">online</span>{% else %}<span class="danger">offline/stale</span>{% endif %}</p>
-  <p class="muted">worker_id={{ worker.worker_id }}, host={{ worker.host }}, pid={{ worker.pid }}, processed={{ worker.processed_jobs }}, last heartbeat={{ worker.last_heartbeat_at }}</p>
-  {% if worker.last_claimed_job_id %}<p class="muted">last claimed job: {{ worker.last_claimed_job_id }}</p>{% endif %}
-  {% if worker.last_completed_job_id %}<p class="muted">last completed job: {{ worker.last_completed_job_id }}</p>{% endif %}
-  {% else %}
-  <p class="danger">No worker heartbeat yet.</p>
-  {% endif %}
-</section>
-{% endif %}
-<section class="grid stats">
-  <article class="card"><h3>Known Nodes</h3><div class="value">{{ total_nodes }}</div></article>
-  <article class="card"><h3>Online</h3><div class="value success">{{ online_nodes }}</div></article>
-  <article class="card"><h3>Stale/Offline</h3><div class="value warn">{{ stale_nodes }}</div></article>
-  <article class="card"><h3>Pending Jobs</h3><div class="value">{{ pending_jobs }}</div></article>
-  <article class="card"><h3>Failed Jobs (24h)</h3><div class="value danger">{{ failed_jobs }}</div></article>
-</section>
-<section class="grid two">
-  <article class="card">
-    <h2>Discovery</h2>
-    <form method="post" action="/ui/discovery/scan" class="stack">
-      <label>Provider
-        <select name="provider">
-          {% for provider in providers %}
-          <option value="{{ provider }}">{{ provider }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Hosts (IP/hostname, comma or new line separated)
-        <textarea name="hosts_text" rows="3" placeholder="10.10.0.15"></textarea>
-      </label>
-      <label>CIDR ranges (comma or new line separated)
-        <textarea name="cidrs_text" rows="3" placeholder="10.10.0.0/24"></textarea>
-      </label>
-      <label>Manual endpoints (comma or new line separated)
-        <textarea name="endpoints_text" rows="2" placeholder="tcp://10.10.0.20:4403"></textarea>
-      </label>
-      <label>Port override (optional)
-        <input type="number" name="port" min="1" max="65535" placeholder="4403" />
-      </label>
-      <button type="submit">Run Discovery</button>
-    </form>
-  </article>
-  <article class="card">
-    <h2>Sync</h2>
-    <form method="post" action="/ui/sync/run" class="stack">
-      <label><input type="checkbox" name="quick" value="true" /> Quick sync</label>
-      <button type="submit">Run Sync</button>
-    </form>
-    <p class="muted">After sync, open <a href="/nodes">Nodes</a> to verify inventory.</p>
-  </article>
-</section>
-<section class="card">
-  <h2>Discovery Progress</h2>
-  {% if latest_discovery_job %}
-  <p><b>Last discovery job:</b> {{ latest_discovery_job.id }} ({{ latest_discovery_job.status }})</p>
-  {% if latest_discovery_progress %}
-  <p><b>Latest log:</b> {{ latest_discovery_progress.message }}</p>
-  <pre>{{ latest_discovery_progress.details | tojson(indent=2) }}</pre>
-  {% else %}
-  <p class="muted">No log entries yet.</p>
-  {% endif %}
-  <p><a href="/jobs">Open Jobs</a></p>
-  {% else %}
-  <p class="muted">No discovery jobs yet.</p>
-  {% endif %}
-</section>
-<section class="grid two">
-  <article class="card">
-    <h2>Provider Summary</h2>
-    <table><tr><th>Provider</th><th>Nodes</th></tr>
-    {% for item in provider_summary %}<tr><td>{{ item[0] }}</td><td>{{ item[1] }}</td></tr>{% endfor %}
-    </table>
-  </article>
-  <article class="card">
-    <h2>Recent Changes</h2>
-    <table><tr><th>Time</th><th>Action</th><th>Actor</th></tr>
-    {% for e in recent_changes %}<tr><td>{{ e.created_at }}</td><td>{{ e.action }}</td><td>{{ e.actor }}</td></tr>{% endfor %}
-    </table>
-  </article>
+<section class="dashboard-shell">
+  {% if ui_message %}<section class="card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+  {% if ui_error %}<section class="card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
+
+  <section class="dashboard-hero card">
+    <div class="dashboard-hero-copy">
+      <p class="eyebrow">Fleet Overview</p>
+      <h1>Operational dashboard for the full mesh fleet.</h1>
+      <p class="hero-copy">Track fleet health, launch the most common actions, and move quickly from issues to the right workspace.</p>
+      <div class="dashboard-meta-row">
+        <span class="status-pill status-pill-{{ worker_status.state }}">{{ worker_status.label }}</span>
+        <span class="meta-chip">Last sync {{ latest_sync_at }}</span>
+        <span class="meta-chip">Last discovery {{ latest_discovery_at }}</span>
+        <span class="meta-chip">Coverage {{ fleet_health.coverage }}</span>
+      </div>
+    </div>
+    <div class="dashboard-hero-actions">
+      <form method="post" action="/ui/sync/run" class="action-card action-card-primary stack">
+        <div>
+          <h2>Sync Fleet</h2>
+          <p class="muted">Refresh inventory and reachability before making operational decisions.</p>
+        </div>
+        <label class="compact-toggle"><input type="checkbox" name="quick" value="true" /> Quick sync only</label>
+        <button type="submit">Run Sync</button>
+      </form>
+      <div class="action-card action-card-secondary stack">
+        <div>
+          <h2>Explore Fleet</h2>
+          <p class="muted">Jump straight into nodes, jobs, the fleet map, or system settings.</p>
+        </div>
+        <div class="action-links-grid">
+          <a class="quick-link" href="/nodes">Open Nodes</a>
+          <a class="quick-link" href="/jobs">Open Jobs</a>
+          <a class="quick-link" href="/map">Open Map</a>
+          <a class="quick-link" href="/settings">Open Settings</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="dashboard-metrics-grid">
+    {% for metric in metrics %}
+    <a href="{{ metric.href }}" class="metric-card metric-card-{{ metric.tone }}">
+      <span class="metric-label">{{ metric.label }}</span>
+      <strong class="metric-value">{{ metric.value }}</strong>
+      <span class="metric-meta">{{ metric.meta }}</span>
+    </a>
+    {% endfor %}
+  </section>
+
+  <section class="dashboard-primary-grid">
+    <article class="card dashboard-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Priority Queue</p>
+          <h2>Needs attention</h2>
+        </div>
+      </div>
+      <div class="attention-list">
+        {% for item in attention_items %}
+        <a href="{{ item.href }}" class="attention-item attention-item-{{ item.tone }}">
+          <div class="attention-item-main">
+            <div class="attention-item-header">
+              <span class="status-pill status-pill-{{ item.tone }}">{{ item.count }}</span>
+              <strong>{{ item.title }}</strong>
+            </div>
+            <p class="muted">{{ item.description }}</p>
+          </div>
+          <span class="attention-cta">{{ item.cta }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="card dashboard-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Action Center</p>
+          <h2>Launch operations</h2>
+        </div>
+      </div>
+      <div class="dashboard-actions-stack">
+        <form method="post" action="/ui/discovery/scan" class="action-workflow stack">
+          <div>
+            <h3>Discovery scan</h3>
+            <p class="muted">Start a new discovery pass without leaving the dashboard.</p>
+          </div>
+          <label>Provider
+            <select name="provider">
+              {% for provider in providers %}
+              <option value="{{ provider }}">{{ provider }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Hosts
+            <textarea name="hosts_text" rows="2" placeholder="10.10.0.15&#10;node.example.local"></textarea>
+          </label>
+          <details class="action-workflow-details">
+            <summary>Advanced discovery fields</summary>
+            <div class="stack mt-1">
+              <label>CIDR ranges
+                <textarea name="cidrs_text" rows="2" placeholder="10.10.0.0/24"></textarea>
+              </label>
+              <label>Manual endpoints
+                <textarea name="endpoints_text" rows="2" placeholder="tcp://10.10.0.20:4403"></textarea>
+              </label>
+              <label>Port override
+                <input type="number" name="port" min="1" max="65535" placeholder="4403" />
+              </label>
+            </div>
+          </details>
+          <button type="submit">Run Discovery</button>
+        </form>
+
+        <div class="action-status-card">
+          <h3>Execution status</h3>
+          <p class="muted">{{ worker_status.detail }}</p>
+          {% if latest_sync_job %}
+          <p class="action-status-line"><span class="status-pill status-pill-neutral">Latest sync</span> {{ latest_sync_job.status }} from {{ latest_sync_job.source }}</p>
+          {% endif %}
+          {% if latest_discovery_job %}
+          <p class="action-status-line"><span class="status-pill status-pill-neutral">Latest discovery</span> {{ latest_discovery_job.status }}</p>
+          {% endif %}
+          {% if latest_discovery_progress %}
+          <p class="muted">{{ latest_discovery_progress.message }}</p>
+          {% endif %}
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="dashboard-secondary-grid">
+    <article class="card dashboard-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Activity</p>
+          <h2>Recent jobs</h2>
+        </div>
+        <a href="/jobs">View all</a>
+      </div>
+      <div class="activity-feed">
+        {% for job in recent_jobs %}
+        <a href="/jobs" class="activity-item">
+          <div>
+            <div class="activity-title-row">
+              <strong>{{ job.job_type }}</strong>
+              <span class="status-pill status-pill-{{ 'success' if job.status == 'success' else ('danger' if job.status == 'failed' else 'warning') }}">{{ job.status }}</span>
+            </div>
+            <p class="muted">{{ job.requested_by }} via {{ job.source }}</p>
+          </div>
+          <span class="activity-time">{{ job.created_at }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="card dashboard-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Audit</p>
+          <h2>Recent changes</h2>
+        </div>
+        <a href="/audit">View all</a>
+      </div>
+      <div class="activity-feed">
+        {% for entry in recent_changes %}
+        <a href="/audit" class="activity-item">
+          <div>
+            <div class="activity-title-row">
+              <strong>{{ entry.action }}</strong>
+              <span class="status-pill status-pill-neutral">{{ entry.actor }}</span>
+            </div>
+            <p class="muted">{{ entry.source or 'ui' }}</p>
+          </div>
+          <span class="activity-time">{{ entry.created_at }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  <section class="dashboard-health-grid">
+    <article class="card dashboard-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Providers</p>
+          <h2>Provider health</h2>
+        </div>
+      </div>
+      <div class="provider-health-grid">
+        {% for provider in providers_health %}
+        <div class="provider-health-card">
+          <div class="activity-title-row">
+            <strong>{{ provider.provider }}</strong>
+            <span class="status-pill status-pill-{{ 'success' if provider.status == 'ok' else 'warning' }}">{{ provider.status }}</span>
+          </div>
+          <p class="muted">{{ provider.details if provider.details else 'No extra provider details reported.' }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="card dashboard-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Coverage</p>
+          <h2>Fleet distribution</h2>
+        </div>
+      </div>
+      <div class="provider-summary-list">
+        {% for item in provider_summary %}
+        <div class="summary-row">
+          <span>{{ item[0] }}</span>
+          <strong>{{ item[1] }} nodes</strong>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="coverage-note">
+        <p class="muted">Use the map to validate coordinates and the nodes workspace to correct missing metadata.</p>
+      </div>
+    </article>
+  </section>
 </section>
 {% endblock %}

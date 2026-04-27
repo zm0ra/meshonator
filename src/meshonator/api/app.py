@@ -160,6 +160,14 @@ def _parse_uuid_list(values: list[str]) -> list[UUID]:
     return out
 
 
+def _format_dashboard_timestamp(value: datetime | None) -> str:
+    if value is None:
+        return "Never"
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+
+
 def _node_label(node: ManagedNodeModel) -> str:
     return node.short_name or node.long_name or node.provider_node_id
 
@@ -954,6 +962,16 @@ def dashboard(
     total_nodes = db.scalar(select(func.count()).select_from(ManagedNodeModel)) or 0
     online_nodes = db.scalar(select(func.count()).select_from(ManagedNodeModel).where(ManagedNodeModel.reachable.is_(True))) or 0
     stale_nodes = db.scalar(select(func.count()).select_from(ManagedNodeModel).where(ManagedNodeModel.reachable.is_(False))) or 0
+    favorite_nodes = db.scalar(select(func.count()).select_from(ManagedNodeModel).where(ManagedNodeModel.favorite.is_(True))) or 0
+    mapped_nodes = (
+        db.scalar(
+            select(func.count())
+            .select_from(ManagedNodeModel)
+            .where(ManagedNodeModel.latitude.is_not(None), ManagedNodeModel.longitude.is_not(None))
+        )
+        or 0
+    )
+    unmapped_nodes = max(total_nodes - mapped_nodes, 0)
     pending_jobs = db.scalar(select(func.count()).select_from(JobModel).where(JobModel.status.in_(["pending", "running"]))) or 0
     failed_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     failed_jobs = (
@@ -964,12 +982,19 @@ def dashboard(
         )
         or 0
     )
-    provider_summary = list(
-        db.execute(select(ManagedNodeModel.provider, func.count()).group_by(ManagedNodeModel.provider)).all()
-    )
-    recent_changes = list(db.scalars(select(AuditLogModel).order_by(AuditLogModel.created_at.desc()).limit(10)).all())
+    providers_health = [provider.health().model_dump() for provider in registry.all()]
+    provider_summary = list(db.execute(select(ManagedNodeModel.provider, func.count()).group_by(ManagedNodeModel.provider)).all())
+    recent_changes = list(db.scalars(select(AuditLogModel).order_by(AuditLogModel.created_at.desc()).limit(6)).all())
+    recent_jobs = list(db.scalars(select(JobModel).order_by(JobModel.created_at.desc()).limit(6)).all())
     latest_discovery_job = db.scalar(
         select(JobModel).where(JobModel.job_type == "discovery_scan").order_by(JobModel.created_at.desc()).limit(1)
+    )
+    latest_sync_job = db.scalar(select(JobModel).where(JobModel.job_type == "sync_all").order_by(JobModel.created_at.desc()).limit(1))
+    latest_successful_sync_job = db.scalar(
+        select(JobModel)
+        .where(JobModel.job_type == "sync_all", JobModel.status == "success")
+        .order_by(JobModel.finished_at.desc(), JobModel.created_at.desc())
+        .limit(1)
     )
     latest_discovery_progress = None
     if latest_discovery_job is not None:
@@ -987,6 +1012,156 @@ def dashboard(
         if heartbeat.tzinfo is None:
             heartbeat = heartbeat.replace(tzinfo=timezone.utc)
         worker_online = (datetime.now(timezone.utc) - heartbeat).total_seconds() <= 20
+    latest_discovery_at = latest_discovery_job.created_at if latest_discovery_job is not None else None
+    latest_sync_at = latest_successful_sync_job.finished_at if latest_successful_sync_job is not None else None
+
+    # Build a compact dashboard view model so the template can stay declarative.
+    metrics = [
+        {
+            "label": "Known Nodes",
+            "value": total_nodes,
+            "tone": "neutral",
+            "meta": f"{len(provider_summary)} provider{'s' if len(provider_summary) != 1 else ''} connected",
+            "href": "/nodes",
+        },
+        {
+            "label": "Online",
+            "value": online_nodes,
+            "tone": "success",
+            "meta": "Reachable during the latest sync",
+            "href": "/nodes",
+        },
+        {
+            "label": "Offline / Stale",
+            "value": stale_nodes,
+            "tone": "danger" if stale_nodes else "neutral",
+            "meta": "Nodes that need attention",
+            "href": "/nodes",
+        },
+        {
+            "label": "Pinned Nodes",
+            "value": favorite_nodes,
+            "tone": "accent",
+            "meta": "Managed favorites across the fleet",
+            "href": "/nodes",
+        },
+        {
+            "label": "Pending Jobs",
+            "value": pending_jobs,
+            "tone": "warning" if pending_jobs else "neutral",
+            "meta": "Queued or currently running",
+            "href": "/jobs",
+        },
+        {
+            "label": "Failed Jobs (24h)",
+            "value": failed_jobs,
+            "tone": "danger" if failed_jobs else "neutral",
+            "meta": "Recent failures needing review",
+            "href": "/jobs",
+        },
+        {
+            "label": "Mapped Nodes",
+            "value": mapped_nodes,
+            "tone": "neutral",
+            "meta": f"{unmapped_nodes} without location",
+            "href": "/map",
+        },
+        {
+            "label": "Last Successful Sync",
+            "value": _format_dashboard_timestamp(latest_sync_at),
+            "tone": "neutral",
+            "meta": "Freshness of fleet inventory",
+            "href": "/jobs",
+        },
+    ]
+
+    # Attention items surface operational problems before the secondary activity feeds.
+    attention_items: list[dict[str, str | int]] = []
+    if stale_nodes:
+        attention_items.append(
+            {
+                "tone": "danger",
+                "title": "Offline or stale nodes",
+                "count": stale_nodes,
+                "description": "Reachability dropped for part of the fleet. Review affected nodes before pushing more changes.",
+                "href": "/nodes",
+                "cta": "Review nodes",
+            }
+        )
+    if failed_jobs:
+        attention_items.append(
+            {
+                "tone": "danger",
+                "title": "Failed jobs in the last 24 hours",
+                "count": failed_jobs,
+                "description": "Recent jobs ended with errors and should be checked before the next batch operation.",
+                "href": "/jobs",
+                "cta": "Open jobs",
+            }
+        )
+    if unmapped_nodes:
+        attention_items.append(
+            {
+                "tone": "warning",
+                "title": "Nodes missing location",
+                "count": unmapped_nodes,
+                "description": "Map coverage is incomplete. Add coordinates to improve operational visibility.",
+                "href": "/map",
+                "cta": "Open map",
+            }
+        )
+    degraded_providers = [provider for provider in providers_health if provider.get("status") != "ok"]
+    if degraded_providers:
+        attention_items.append(
+            {
+                "tone": "warning",
+                "title": "Provider health degraded",
+                "count": len(degraded_providers),
+                "description": "At least one provider is not reporting a healthy status. Verify connectivity and capability checks.",
+                "href": "/settings",
+                "cta": "Inspect providers",
+            }
+        )
+    if settings.job_executor_mode == "external" and not worker_online:
+        attention_items.append(
+            {
+                "tone": "warning",
+                "title": "Worker heartbeat missing",
+                "count": 1,
+                "description": "The external executor is not reporting a fresh heartbeat, so queued jobs may not be processed.",
+                "href": "/jobs",
+                "cta": "Check worker",
+            }
+        )
+    if not attention_items:
+        attention_items.append(
+            {
+                "tone": "success",
+                "title": "Everything looks healthy",
+                "count": total_nodes,
+                "description": "No critical fleet issues are currently surfaced by the dashboard.",
+                "href": "/nodes",
+                "cta": "Browse nodes",
+            }
+        )
+
+    worker_status = {
+        "state": "online" if worker_online else ("offline" if settings.job_executor_mode == "external" else "disabled"),
+        "label": (
+            "Worker online"
+            if worker_online
+            else ("Worker offline" if settings.job_executor_mode == "external" else "Internal executor")
+        ),
+        "detail": (
+            f"Last heartbeat {_format_dashboard_timestamp(worker.last_heartbeat_at)}"
+            if worker is not None and worker.last_heartbeat_at is not None
+            else (
+                "No worker heartbeat reported yet"
+                if settings.job_executor_mode == "external"
+                else "Jobs are executed inside the application process"
+            )
+        ),
+    }
     ui_message = request.query_params.get("message")
     ui_error = request.query_params.get("error")
     return templates.TemplateResponse(
@@ -995,18 +1170,25 @@ def dashboard(
         {
             "user": user,
             "job_executor_mode": settings.job_executor_mode,
-            "total_nodes": total_nodes,
-            "online_nodes": online_nodes,
-            "stale_nodes": stale_nodes,
-            "pending_jobs": pending_jobs,
-            "failed_jobs": failed_jobs,
+            "metrics": metrics,
+            "attention_items": attention_items,
             "provider_summary": provider_summary,
+            "providers_health": providers_health,
             "recent_changes": recent_changes,
+            "recent_jobs": recent_jobs,
             "latest_discovery_job": latest_discovery_job,
             "latest_discovery_progress": latest_discovery_progress,
+            "latest_discovery_at": _format_dashboard_timestamp(latest_discovery_at),
+            "latest_sync_at": _format_dashboard_timestamp(latest_sync_at),
+            "latest_sync_job": latest_sync_job,
             "providers": providers,
             "worker": worker,
             "worker_online": worker_online,
+            "worker_status": worker_status,
+            "fleet_health": {
+                "coverage": f"{mapped_nodes}/{total_nodes}" if total_nodes else "0/0",
+                "provider_count": len(providers_health),
+            },
             "ui_message": ui_message,
             "ui_error": ui_error,
         },

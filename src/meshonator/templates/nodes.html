@@ -193,6 +193,7 @@
     </div>
   </div>
   <p class="muted">Select nodes in the table above, then queue one shared configuration job.</p>
+  <p class="muted">Keep current leaves the existing node value untouched. Only populated fields and enabled clone options below will be applied.</p>
   <form method="post" action="/ui/nodes/batch-configure" class="stack" id="batch-config-form">
     <fieldset>
       <legend>Clone from source node</legend>
@@ -387,8 +388,22 @@
       </label>
     </fieldset>
 
+    <div class="stack">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Preflight</p>
+          <h3>Batch change summary</h3>
+        </div>
+      </div>
+      <p class="muted" id="batch-selection-count">Selected nodes: 0</p>
+      <ul class="subtle-list" id="batch-preview-list" aria-live="polite">
+        <li class="muted">Select nodes and choose changes to build a preview before queueing.</li>
+      </ul>
+    </div>
+
     <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-    <button type="submit">Queue Batch Node Changes</button>
+    <label><input type="checkbox" name="confirm_batch_changes" value="true" id="batch-confirm-checkbox" /> I reviewed the selected node count and change summary above.</label>
+    <button type="submit" id="batch-submit-button" disabled>Queue Batch Node Changes</button>
   </form>
 </section>
 <script>
@@ -396,7 +411,105 @@ function toggleAllNodeSelection(state) {
   document.querySelectorAll(".node-selector").forEach(function (el) {
     el.checked = state;
   });
+  refreshBatchPreview();
 }
+
+function refreshBatchPreview() {
+  const selectedNodes = Array.from(document.querySelectorAll('.node-selector:checked'));
+  const previewList = document.getElementById('batch-preview-list');
+  const selectionCount = document.getElementById('batch-selection-count');
+  const submitButton = document.getElementById('batch-submit-button');
+  const confirmCheckbox = document.getElementById('batch-confirm-checkbox');
+  const form = document.getElementById('batch-config-form');
+  if (!previewList || !selectionCount || !submitButton || !confirmCheckbox || !form) {
+    return;
+  }
+
+  const items = [];
+  const valueOf = function (name) {
+    const field = form.querySelector('[name="' + name + '"]');
+    if (!field) {
+      return '';
+    }
+    if (field.type === 'checkbox') {
+      return field.checked ? 'true' : '';
+    }
+    return (field.value || '').trim();
+  };
+
+  const cloneSource = valueOf('clone_source_node_id');
+  if (cloneSource) {
+    const cloneParts = [];
+    [['clone_local_config', 'local config'], ['clone_module_config', 'module config'], ['clone_channels', 'channels'], ['clone_role', 'role'], ['clone_favorite', 'pinned state']].forEach(function (entry) {
+      if (valueOf(entry[0])) {
+        cloneParts.push(entry[1]);
+      }
+    });
+    items.push('Clone from source node: ' + (cloneParts.length ? cloneParts.join(', ') : 'no sections selected'));
+  }
+
+  if (valueOf('role_override')) {
+    items.push('Set role override to ' + valueOf('role_override').toUpperCase());
+  }
+  if (valueOf('favorite_state') && valueOf('favorite_state') !== 'keep') {
+    items.push(valueOf('favorite_state') === 'true' ? 'Pin selected nodes in Meshonator' : 'Unpin selected nodes in Meshonator');
+  }
+  if (valueOf('local_config_patch_json')) {
+    items.push('Apply local config JSON patch');
+  }
+  if (valueOf('module_config_patch_json')) {
+    items.push('Apply module config JSON patch');
+  }
+  if (valueOf('channels_patch_json')) {
+    items.push('Apply channels JSON patch');
+  }
+
+  const baselineFields = [
+    'primary_position_precision', 'primary_uplink_enabled', 'primary_downlink_enabled',
+    'telemetry_device_update_interval', 'telemetry_environment_update_interval', 'telemetry_air_quality_interval',
+    'telemetry_power_update_interval', 'telemetry_health_update_interval', 'telemetry_device_enabled',
+    'telemetry_environment_enabled', 'telemetry_air_quality_enabled', 'telemetry_power_enabled',
+    'telemetry_health_enabled', 'mqtt_address', 'mqtt_username', 'mqtt_password', 'mqtt_root', 'mqtt_enabled',
+    'mqtt_encryption_enabled', 'mqtt_json_enabled', 'mqtt_map_reporting_enabled', 'mqtt_proxy_to_client_enabled',
+    'mqtt_tls_enabled', 'network_rsyslog_server', 'network_enabled_protocols'
+  ];
+  if (baselineFields.some(function (name) { return valueOf(name) && valueOf(name) !== 'keep'; })) {
+    items.push('Apply fleet baseline overrides');
+  }
+
+  if (valueOf('center_latitude') && valueOf('center_longitude')) {
+    items.push('Apply location spread around ' + valueOf('center_latitude') + ', ' + valueOf('center_longitude'));
+  }
+  if (valueOf('dry_run')) {
+    items.push('Queue as dry run');
+  }
+
+  selectionCount.textContent = 'Selected nodes: ' + selectedNodes.length;
+  previewList.innerHTML = '';
+  if (items.length === 0) {
+    const item = document.createElement('li');
+    item.className = 'muted';
+    item.textContent = 'No configuration changes are selected yet.';
+    previewList.appendChild(item);
+  } else {
+    items.forEach(function (text) {
+      const item = document.createElement('li');
+      item.textContent = text;
+      previewList.appendChild(item);
+    });
+  }
+
+  submitButton.disabled = selectedNodes.length === 0 || !confirmCheckbox.checked;
+}
+
+document.querySelectorAll('.node-selector').forEach(function (el) {
+  el.addEventListener('change', refreshBatchPreview);
+});
+document.querySelectorAll('#batch-config-form input, #batch-config-form select, #batch-config-form textarea').forEach(function (el) {
+  el.addEventListener('input', refreshBatchPreview);
+  el.addEventListener('change', refreshBatchPreview);
+});
+refreshBatchPreview();
 </script>
 </section>
 {% endblock %}

@@ -28,13 +28,16 @@
         <p class="eyebrow">Execution table</p>
         <h2>Recent system jobs</h2>
       </div>
-      {% if auto_refresh %}<p class="muted">Live refresh enabled every 3s while jobs are pending or running.</p>{% endif %}
+      <div class="inline-actions">
+        <p class="muted">Live refresh {{ 'enabled' if auto_refresh else 'paused' }} every 3s.</p>
+        <a href="{{ refresh_toggle_url }}">{{ 'Pause live refresh' if auto_refresh else 'Enable live refresh' }}</a>
+      </div>
     </div>
     <div class="table-wrap">
       <table class="data-table">
         <tr>
           <th>ID</th>
-          <th>Type</th>
+            <th>Operator Label</th>
           <th>Status</th>
           <th>By</th>
           <th>Source</th>
@@ -46,7 +49,7 @@
         {% for j in jobs %}
         <tr>
           <td>{{ j.id }}</td>
-          <td>{{ j.job_type }}</td>
+          <td>{{ job_type_label(j.job_type) }}</td>
           <td><span class="status-pill status-pill-{{ 'success' if j.status == 'success' else ('danger' if j.status == 'failed' else 'warning' if j.status in ['pending', 'running'] else 'neutral') }}">{{ j.status }}</span></td>
           <td>{{ j.requested_by }}</td>
           <td>{{ j.source }}</td>
@@ -56,15 +59,15 @@
           <td>
             {% set logs = results_by_job.get(j.id|string, []) %}
             {% if logs %}
-            <details>
-              <summary>{{ logs|length }} entries</summary>
+            <details {% if j.status in ['pending', 'running', 'failed'] %}open{% endif %}>
+              <summary>View {{ logs|length }} log entr{{ 'y' if logs|length == 1 else 'ies' }}</summary>
               <div class="table-wrap nested-table-wrap">
                 <table class="data-table data-table-compact">
                   <tr><th>Time</th><th>Status</th><th>Message</th><th>Details</th></tr>
                   {% for r in logs %}
                   <tr>
                     <td>{{ r.created_at }}</td>
-                    <td>{{ r.status }}</td>
+                    <td><span class="status-pill status-pill-{{ 'success' if r.status == 'success' else ('danger' if r.status == 'failed' else 'warning' if r.status == 'running' else 'neutral') }}">{{ r.status }}</span></td>
                     <td>{{ r.message }}</td>
                     <td><pre>{{ r.details | tojson(indent=2) }}</pre></td>
                   </tr>

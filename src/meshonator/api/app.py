@@ -72,10 +72,41 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="src/meshonator/static"), name="static")
 templates = Jinja2Templates(directory="src/meshonator/templates")
+def _humanize_identifier(raw: str) -> str:
+    return raw.replace("_", " ").replace(".", " ").strip().title()
+
+JOB_TYPE_LABELS = {
+    "discovery_scan": "Discovery sweep",
+    "sync_all": "Fleet sync",
+    "group_apply_template": "Group rollout",
+    "node_config_patch": "Single node change",
+    "multi_node_config_patch": "Batch node change",
+    "node_nodedb_mutation": "NodeDB change",
+    "bulk_nodedb_mutation": "Fleet NodeDB change",
+}
+
+AUDIT_ACTION_LABELS = {
+    "discovery.scan": "Discovery sweep",
+    "sync.all": "Fleet sync",
+    "node.batch_patch.queued": "Batch node change queued",
+    "group.apply_template": "Group rollout",
+    "node.config_patch": "Single node change",
+    "node.nodedb_mutation": "NodeDB change",
+    "bulk.nodedb_mutation": "Fleet NodeDB change",
+}
+
+def _humanize_job_type(job_type: str) -> str:
+    return JOB_TYPE_LABELS.get(job_type, _humanize_identifier(job_type))
+
+def _humanize_audit_action(action: str) -> str:
+    return AUDIT_ACTION_LABELS.get(action, _humanize_identifier(action))
+
 templates.env.globals.update(
     app_name=settings.app_name,
     build_version=settings.build_version,
     build_date=settings.build_date,
+    job_type_label=_humanize_job_type,
+    audit_action_label=_humanize_audit_action,
 )
 
 
@@ -98,6 +129,10 @@ def _parse_multi_value(raw: str) -> list[str]:
     return values
 
 
+def _has_discovery_targets(*collections: list[str]) -> bool:
+    return any(item.strip() for collection in collections for item in collection if isinstance(item, str))
+
+
 def _parse_optional_float(raw: str) -> float | None:
     value = raw.strip()
     if not value:
@@ -105,23 +140,35 @@ def _parse_optional_float(raw: str) -> float | None:
     return float(value)
 
 
-def _parse_json_dict(raw: str) -> dict:
+def _parse_json_error(label: str, exc: json.JSONDecodeError) -> ValueError:
+    return ValueError(
+        f"Invalid JSON in {label} at line {exc.lineno}, column {exc.colno}. Check quotes, commas, and braces."
+    )
+
+
+def _parse_json_dict(raw: str, label: str = "JSON input") -> dict:
     value = raw.strip()
     if not value:
         return {}
-    decoded = json.loads(value)
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise _parse_json_error(label, exc) from None
     if not isinstance(decoded, dict):
-        raise ValueError("Expected JSON object")
+        raise ValueError(f"{label} must be a JSON object")
     return decoded
 
 
-def _parse_json_list(raw: str) -> list:
+def _parse_json_list(raw: str, label: str = "JSON input") -> list:
     value = raw.strip()
     if not value:
         return []
-    decoded = json.loads(value)
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise _parse_json_error(label, exc) from None
     if not isinstance(decoded, list):
-        raise ValueError("Expected JSON array")
+        raise ValueError(f"{label} must be a JSON array")
     return decoded
 
 
@@ -738,6 +785,38 @@ def _remove_nested_key(dst: dict[str, Any], path: list[str]) -> None:
         cursor.pop(path[-1], None)
 
 
+def _is_sensitive_operator_segment(segment: str) -> bool:
+    lowered = segment.strip().lower()
+    return lowered in {
+        "security",
+        "privatekey",
+        "publickey",
+        "password",
+        "psk",
+        "primarychannelurl",
+        "secret",
+        "token",
+    } or lowered.endswith("password")
+
+
+def _is_sensitive_operator_path(path: list[str]) -> bool:
+    return any(_is_sensitive_operator_segment(segment) for segment in path)
+
+
+def _redact_operator_metadata(value: Any) -> Any:
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            if _is_sensitive_operator_segment(key):
+                out[key] = "[redacted]"
+            else:
+                out[key] = _redact_operator_metadata(item)
+        return out
+    if isinstance(value, list):
+        return [_redact_operator_metadata(item) for item in value]
+    return value
+
+
 def _build_alignment_local_patch(raw_metadata: dict[str, Any]) -> dict[str, Any]:
     prefs = raw_metadata.get("preferences", {})
     if not isinstance(prefs, dict):
@@ -839,6 +918,8 @@ def _descriptor_to_rows(descriptor: Any, current: dict[str, Any], prefix: list[s
     for field in descriptor.fields:
         field_name = field.json_name
         path = [*prefix, field_name]
+        if _is_sensitive_operator_path(path):
+            continue
         kind = _field_kind(field)
         value = _get_nested(current, path)
         if kind == "message":
@@ -1144,6 +1225,11 @@ def dashboard(
                 "cta": "Browse nodes",
             }
         )
+    attention_summary = (
+        "No critical fleet issues are currently surfaced by the dashboard."
+        if attention_items and attention_items[0].get("tone") == "success"
+        else f"{len(attention_items)} attention lane{'s' if len(attention_items) != 1 else ''} need review before the next change."
+    )
 
     worker_status = {
         "state": "online" if worker_online else ("offline" if settings.job_executor_mode == "external" else "disabled"),
@@ -1173,6 +1259,7 @@ def dashboard(
             "metrics": metrics,
             "attention_items": attention_items,
             "provider_summary": provider_summary,
+            "attention_summary": attention_summary,
             "providers_health": providers_health,
             "recent_changes": recent_changes,
             "recent_jobs": recent_jobs,
@@ -1210,6 +1297,9 @@ def ui_discovery_scan(
     hosts = _parse_multi_value(hosts_text)
     cidrs = _parse_multi_value(cidrs_text)
     endpoints = _parse_multi_value(endpoints_text)
+    if not _has_discovery_targets(hosts, cidrs, endpoints):
+        error = quote_plus("Enter at least one host, CIDR range, or manual endpoint before running discovery")
+        return RedirectResponse(url=f"/?error={error}", status_code=303)
     try:
         job = JobsService(db).create(
             job_type="discovery_scan",
@@ -1376,6 +1466,7 @@ def ui_nodes_compare(
 @app.post("/ui/nodes/batch-configure")
 def ui_nodes_batch_configure(
     selected_node_ids: list[str] = Form(default=[]),
+    confirm_batch_changes: bool = Form(False),
     clone_source_node_id: str = Form(""),
     clone_local_config: bool = Form(False),
     clone_module_config: bool = Form(False),
@@ -1424,11 +1515,16 @@ def ui_nodes_batch_configure(
         node_ids = _parse_uuid_list(selected_node_ids)
         if not node_ids:
             return RedirectResponse(url="/nodes?error=Select+at+least+one+node", status_code=303)
+        if not confirm_batch_changes:
+            return RedirectResponse(
+                url="/nodes?error=Review+the+preflight+summary+and+confirm+the+batch+change+before+queueing",
+                status_code=303,
+            )
 
         base_patch: dict[str, Any] = {
-            "local_config_patch": _parse_json_dict(local_config_patch_json),
-            "module_config_patch": _parse_json_dict(module_config_patch_json),
-            "channels_patch": _parse_json_list(channels_patch_json),
+            "local_config_patch": _parse_json_dict(local_config_patch_json, "Local config patch"),
+            "module_config_patch": _parse_json_dict(module_config_patch_json, "Module config patch"),
+            "channels_patch": _parse_json_list(channels_patch_json, "Channels patch"),
         }
         if value := role_override.strip():
             base_patch["role"] = value.upper()
@@ -1708,6 +1804,7 @@ def node_details_page(
     current_module_config = node.raw_metadata.get("modulePreferences", {}) if isinstance(node.raw_metadata, dict) else {}
     current_channels = node.raw_metadata.get("channels", []) if isinstance(node.raw_metadata, dict) else []
     structured_forms = _build_structured_forms(current_local_config, current_module_config, current_channels)
+    redacted_raw_metadata = _redact_operator_metadata(node.raw_metadata or {})
     return templates.TemplateResponse(
         request,
         "node_detail.html",
@@ -1720,6 +1817,7 @@ def node_details_page(
             "current_module_config": current_module_config,
             "current_channels": current_channels,
             "structured_forms": structured_forms,
+            "redacted_raw_metadata": redacted_raw_metadata,
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
         },
@@ -1772,16 +1870,19 @@ def ui_node_configure(
             favorite_value = True
         elif favorite_state == "false":
             favorite_value = False
-        local_patch = _parse_json_dict(local_config_patch_json)
-        module_patch = _parse_json_dict(module_config_patch_json)
-        channels_patch = _channels_to_patch(_parse_json_list(channels_patch_json))
+        local_patch = _parse_json_dict(local_config_patch_json, "Local config patch")
+        module_patch = _parse_json_dict(module_config_patch_json, "Module config patch")
+        channels_patch = _channels_to_patch(_parse_json_list(channels_patch_json, "Channels patch"))
 
         if full_local_config_json.strip():
-            local_patch = _merge_patch(_parse_json_dict(full_local_config_json), local_patch)
+            local_patch = _merge_patch(_parse_json_dict(full_local_config_json, "Full localConfig"), local_patch)
         if full_module_config_json.strip():
-            module_patch = _merge_patch(_parse_json_dict(full_module_config_json), module_patch)
+            module_patch = _merge_patch(_parse_json_dict(full_module_config_json, "Full moduleConfig"), module_patch)
         if full_channels_json.strip():
-            channels_patch = _merge_list_patch(_channels_to_patch(_parse_json_list(full_channels_json)), channels_patch)
+            channels_patch = _merge_list_patch(
+                _channels_to_patch(_parse_json_list(full_channels_json, "Full channels")),
+                channels_patch,
+            )
 
         value = _parse_optional_int(position_broadcast_secs)
         if value is not None:
@@ -2217,8 +2318,8 @@ def ui_group_create(
         group = GroupsService(db).create_group(
             name=name.strip(),
             description=description.strip() or None,
-            dynamic_filter=_parse_json_dict(dynamic_filter_json),
-            desired_config_template=_parse_json_dict(desired_template_json),
+            dynamic_filter=_parse_json_dict(dynamic_filter_json, "Dynamic filter"),
+            desired_config_template=_parse_json_dict(desired_template_json, "Desired template"),
         )
         AuditService(db).log(
             actor=user.username,
@@ -2364,7 +2465,7 @@ def ui_group_configure(
     user: CurrentUser = Depends(require_role("operator")),
 ) -> RedirectResponse:
     try:
-        desired_template = _parse_json_dict(desired_template_json)
+        desired_template = _parse_json_dict(desired_template_json, "Desired template")
         local_patch = desired_template.get("local_config_patch", {}) if isinstance(desired_template.get("local_config_patch"), dict) else {}
         module_patch = desired_template.get("module_config_patch", {}) if isinstance(desired_template.get("module_config_patch"), dict) else {}
 
@@ -2405,7 +2506,7 @@ def ui_group_configure(
         group = GroupsService(db).update_group(
             group_id,
             description=description.strip() or None,
-            dynamic_filter=_parse_json_dict(dynamic_filter_json),
+            dynamic_filter=_parse_json_dict(dynamic_filter_json, "Dynamic filter"),
             desired_config_template=desired_template,
         )
         AuditService(db).log(
@@ -2441,7 +2542,8 @@ def jobs_page(
         bucket = results_by_job.setdefault(key, [])
         if len(bucket) < 30:
             bucket.append(row)
-    auto_refresh = any(job.status in {"pending", "running"} for job in jobs)
+    auto_refresh = request.query_params.get("refresh", "on").lower() != "off"
+    refresh_toggle_url = "/jobs?refresh=off" if auto_refresh else "/jobs?refresh=on"
     return templates.TemplateResponse(
         request,
         "jobs.html",
@@ -2450,6 +2552,7 @@ def jobs_page(
             "jobs": jobs,
             "results_by_job": results_by_job,
             "auto_refresh": auto_refresh,
+            "refresh_toggle_url": refresh_toggle_url,
         },
     )
 
@@ -2634,6 +2737,8 @@ def api_discovery_scan(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
 ) -> dict:
+    if not _has_discovery_targets(payload.hosts, payload.cidrs, payload.manual_endpoints):
+        raise HTTPException(status_code=422, detail="Provide at least one host, CIDR range, or manual endpoint")
     found = DiscoveryService(db, registry).scan(
         provider_name=payload.provider,
         hosts=payload.hosts,

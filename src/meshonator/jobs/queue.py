@@ -349,11 +349,16 @@ def _run_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
             discovered_endpoints = [item.endpoint for item in found]
             new_endpoints = sorted(set(discovered_endpoints) - existing_endpoints)
             existing_reconfirmed = sorted(set(discovered_endpoints) & existing_endpoints)
+            discovery_success = len(found) > 0
             jobs.add_result(
                 job_id=job_id,
-                status="success",
+                status="success" if discovery_success else "failed",
                 node_id=None,
-                message=f"Discovery finished with {len(found)} endpoints",
+                message=(
+                    f"Discovery finished with {len(found)} endpoints"
+                    if discovery_success
+                    else "Discovery found 0 endpoints. Review the target list and probe results before retrying."
+                ),
                 details={
                     "endpoints": discovered_endpoints,
                     "new_endpoints": new_endpoints,
@@ -364,7 +369,7 @@ def _run_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
                 },
             )
             sync_failed = []
-            if payload.get("auto_sync", True):
+            if discovery_success and payload.get("auto_sync", True):
                 sync_results = SyncService(db, registry).sync_all(quick=True)
                 sync_failed = [item for item in sync_results if item.get("status") != "success"]
                 jobs.add_result(
@@ -374,7 +379,7 @@ def _run_discovery_job(job_id: UUID, registry: ProviderRegistry) -> None:
                     message=f"Auto-sync after discovery: {len(sync_results)} endpoints, {len(sync_failed)} failed",
                     details={"sync_results": sync_results},
                 )
-            jobs.finish(job_id, success=(len(sync_failed) == 0))
+            jobs.finish(job_id, success=(discovery_success and len(sync_failed) == 0))
             audit.log(
                 actor=job.requested_by,
                 source=job.source,

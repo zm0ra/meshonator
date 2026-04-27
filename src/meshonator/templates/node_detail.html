@@ -209,15 +209,19 @@
     <label>Channels patch (JSON array)
       <textarea name="channels_patch_json" rows="6" placeholder='[{"index":0,"settings":{"name":"mesh"}}]'></textarea>
     </label>
-    <label>Full localConfig (JSON object)
-      <textarea name="full_local_config_json" rows="10">{{ current_local_config | tojson(indent=2) }}</textarea>
-    </label>
-    <label>Full moduleConfig (JSON object)
-      <textarea name="full_module_config_json" rows="10">{{ current_module_config | tojson(indent=2) }}</textarea>
-    </label>
-    <label>Full channels (JSON array)
-      <textarea name="full_channels_json" rows="10">{{ current_channels | tojson(indent=2) }}</textarea>
-    </label>
+    <details style="grid-column: 1 / -1;">
+      <summary>Advanced / Expert JSON input</summary>
+      <p class="muted">Paste a reviewed JSON object or array only when the structured controls are insufficient. Sensitive values are intentionally not prefilled here.</p>
+      <label>Full localConfig (JSON object)
+        <textarea name="full_local_config_json" rows="10" placeholder='{"position":{"positionBroadcastSecs":300}}'></textarea>
+      </label>
+      <label>Full moduleConfig (JSON object)
+        <textarea name="full_module_config_json" rows="10" placeholder='{"mqtt":{"enabled":false}}'></textarea>
+      </label>
+      <label>Full channels (JSON array)
+        <textarea name="full_channels_json" rows="10" placeholder='[{"index":0,"settings":{"name":"mesh"}}]'></textarea>
+      </label>
+    </details>
     <div><button type="submit">Apply Node Changes</button></div>
   </form>
 </section>
@@ -436,16 +440,20 @@ CLIENT_BASE</textarea>
   <p><b>Hardware:</b> {{ node.raw_metadata.get('metadata', {}).get('hwModel') }}</p>
   <p><b>Role:</b> {{ node.raw_metadata.get('metadata', {}).get('role') }}</p>
   <p><b>Known mesh nodes:</b> {{ node.raw_metadata.get('nodesInMesh', {})|length }}</p>
-  <p><b>Primary channel URL:</b> {{ node.raw_metadata.get('primaryChannelUrl') }}</p>
+  <p><b>Primary channel URL:</b> Hidden in operator view</p>
 </section>
 <section class="panel-card">
   <div class="section-header compact-header">
     <div>
-      <p class="eyebrow">Developer payload</p>
-      <h2>Raw Provider Payload</h2>
+      <p class="eyebrow">Expert payload</p>
+      <h2>Redacted Provider Payload</h2>
     </div>
   </div>
-  <pre>{{ node.raw_metadata }}</pre>
+  <p class="muted">Sensitive fields are removed from the normal operator surface. Expand only when you need a redacted provider snapshot for troubleshooting.</p>
+  <details>
+    <summary>Open redacted expert payload</summary>
+    <pre>{{ redacted_raw_metadata | tojson(indent=2) }}</pre>
+  </details>
 </section>
 <section class="panel-card panel-card-span-2">
   <div class="section-header compact-header">

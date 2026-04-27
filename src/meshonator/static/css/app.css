@@ -109,7 +109,19 @@ pre {
   place-items: center;
   background: radial-gradient(circle at 25% 10%, #fff9eb, #dce9de 40%, #e8f3f9);
 }
-.login { width: min(420px, 90vw); display: grid; gap: .6rem; }
+.login-shell {
+  width: min(1040px, 100%);
+  display: grid;
+  gap: 1rem;
+}
+.login-hero {
+  grid-template-columns: minmax(0, 1.4fr) minmax(200px, .6fr);
+}
+.login-card {
+  width: min(520px, 100%);
+  display: grid;
+  gap: .75rem;
+}
 label { display: grid; gap: .3rem; font-size: .9rem; }
 input {
   border: 1px solid var(--line);
@@ -173,18 +185,9 @@ button {
   font-size: 1rem;
 }
 
-.page-hero-steel {
-  background: linear-gradient(135deg, #eef4f2, #fff8f2 45%, #e7eef2);
-}
-
-.page-hero-ember {
-  background: linear-gradient(135deg, #f7e8d8, #fffaf2 48%, #eef4ef);
-}
-
-.page-hero-slate {
-  background: linear-gradient(135deg, #e9edf0, #fbf8f4 42%, #eef4f3);
-}
-
+.page-hero-steel,
+.page-hero-ember,
+.page-hero-slate,
 .page-hero-canvas {
   background: linear-gradient(135deg, #f1ece2, #fff9f2 42%, #edf4f1);
 }
@@ -324,6 +327,16 @@ button {
   padding: .75rem .85rem;
   border-radius: 14px;
   background: rgba(16, 32, 36, 0.04);
+}
+
+.subtle-list-item-like {
+  display: grid;
+  gap: .4rem;
+  padding: .75rem .85rem;
+  border-radius: 14px;
+  background: rgba(16, 32, 36, 0.04);
+  color: inherit;
+  text-decoration: none;
 }
 
 .panel-divider-top {
@@ -719,6 +732,9 @@ button {
   .workspace-columns-wide,
   .operator-live-grid,
   .activity-columns {
+    grid-template-columns: 1fr;
+  }
+  .login-hero {
     grid-template-columns: 1fr;
   }
   .operator-panel,

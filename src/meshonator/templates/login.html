@@ -2,12 +2,32 @@
 <html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="stylesheet" href="/static/css/app.css" /><title>Login - Meshonator</title></head>
 <body class="login-body">
-  <form class="card login" method="post" action="/login">
-    <h1>Meshonator</h1>
-    <p class="muted">Mesh fleet manager</p>
-    {% if error %}<p class="error">{{ error }}</p>{% endif %}
-    <label>Username<input name="username" required /></label>
-    <label>Password<input name="password" type="password" required /></label>
-    <button type="submit">Sign In</button>
-  </form>
+  <main class="login-shell">
+    <section class="page-hero page-hero-steel login-hero">
+      <div>
+        <p class="eyebrow">Access</p>
+        <h1>Meshonator</h1>
+        <p class="page-summary">Sign in to reach the same fleet workspace, color system, and operational shell used across the entire application.</p>
+      </div>
+      <div class="hero-metrics">
+        <article class="hero-metric">
+          <span>Mode</span>
+          <strong>Operator</strong>
+        </article>
+      </div>
+    </section>
+
+    <form class="panel-card login-card" method="post" action="/login">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Authentication</p>
+          <h2>Sign in</h2>
+        </div>
+      </div>
+      {% if error %}<p class="error">{{ error }}</p>{% endif %}
+      <label>Username<input name="username" required /></label>
+      <label>Password<input name="password" type="password" required /></label>
+      <button type="submit">Sign In</button>
+    </form>
+  </main>
 </body></html>

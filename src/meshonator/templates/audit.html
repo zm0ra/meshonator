@@ -1,9 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card">
-  <h1>Audit Log</h1>
-  <table><tr><th>Time</th><th>Actor</th><th>Source</th><th>Action</th><th>Provider</th><th>Node</th></tr>
-  {% for e in entries %}<tr><td>{{ e.created_at }}</td><td>{{ e.actor }}</td><td>{{ e.source }}</td><td>{{ e.action }}</td><td>{{ e.provider }}</td><td>{{ e.node_id }}</td></tr>{% endfor %}
-  </table>
+<section class="page-shell">
+  <header class="page-hero page-hero-slate">
+    <div>
+      <p class="eyebrow">Audit trail</p>
+      <h1>Audit Log</h1>
+      <p class="page-summary">Every fleet mutation, queued action, and operator decision should be traceable without digging through system internals.</p>
+    </div>
+    <div class="hero-metrics">
+      <article class="hero-metric">
+        <span>Visible entries</span>
+        <strong>{{ entries|length }}</strong>
+      </article>
+    </div>
+  </header>
+
+  <article class="panel-card">
+    <div class="section-header">
+      <div>
+        <p class="eyebrow">Timeline</p>
+        <h2>Recent operator and system actions</h2>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <tr><th>Time</th><th>Actor</th><th>Source</th><th>Action</th><th>Provider</th><th>Node</th></tr>
+        {% for e in entries %}<tr><td>{{ e.created_at }}</td><td>{{ e.actor }}</td><td>{{ e.source }}</td><td>{{ e.action }}</td><td>{{ e.provider or '-' }}</td><td>{{ e.node_id or '-' }}</td></tr>{% endfor %}
+      </table>
+    </div>
+  </article>
 </section>
 {% endblock %}

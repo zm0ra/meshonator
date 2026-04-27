@@ -9,21 +9,27 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
-<body>
+<body class="app-body">
+  {% set path = request.url.path if request is defined else '/' %}
   <header class="topbar">
-    <div class="brand">Meshonator</div>
+    <div class="topbar-inner">
+    <div class="brand-block">
+      <div class="brand">Meshonator</div>
+      <div class="brand-subtitle">Fleet operations for Meshtastic and MeshCore</div>
+    </div>
     {% if user %}
-    <nav>
-      <a href="/">Dashboard</a>
-      <a href="/nodes">Nodes</a>
-      <a href="/map">Map</a>
-      <a href="/groups">Groups</a>
-      <a href="/jobs">Jobs</a>
-      <a href="/audit">Audit</a>
-      <a href="/settings">Settings</a>
+    <nav class="primary-nav">
+      <a href="/" class="{{ 'active' if path == '/' else '' }}">Dashboard</a>
+      <a href="/nodes" class="{{ 'active' if path.startswith('/nodes') else '' }}">Nodes</a>
+      <a href="/map" class="{{ 'active' if path.startswith('/map') else '' }}">Map</a>
+      <a href="/groups" class="{{ 'active' if path.startswith('/groups') else '' }}">Groups</a>
+      <a href="/jobs" class="{{ 'active' if path.startswith('/jobs') else '' }}">Jobs</a>
+      <a href="/audit" class="{{ 'active' if path.startswith('/audit') else '' }}">Audit</a>
+      <a href="/settings" class="{{ 'active' if path.startswith('/settings') else '' }}">Settings</a>
     </nav>
-    <form method="post" action="/logout"><button>Logout ({{ user.username }})</button></form>
+    <form method="post" action="/logout"><button class="ghost-button">Logout ({{ user.username }})</button></form>
     {% endif %}
+    </div>
   </header>
   <main class="container">{% block content %}{% endblock %}</main>
   <footer class="footer">

@@ -1,14 +1,38 @@
 {% extends "base.html" %}
 {% block content %}
-{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
-{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
+<section class="page-shell">
+{% if ui_message %}<section class="panel-card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="panel-card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
-<section class="card">
-  <h1>Nodes</h1>
-  <p class="muted">
-    <button type="button" onclick="toggleAllNodeSelection(true)">Select all</button>
-    <button type="button" onclick="toggleAllNodeSelection(false)">Clear</button>
-  </p>
+<header class="page-hero page-hero-steel">
+  <div>
+    <p class="eyebrow">Inventory workspace</p>
+    <h1>Nodes</h1>
+    <p class="page-summary">This page still carries too many raw actions, but it now lives inside the same operational shell as the dashboard. The inventory table is treated as the primary surface and the heavy tools sit below it as secondary workflows.</p>
+  </div>
+  <div class="hero-metrics">
+    <article class="hero-metric">
+      <span>Visible nodes</span>
+      <strong>{{ nodes|length }}</strong>
+    </article>
+    <article class="hero-metric">
+      <span>Compare results</span>
+      <strong>{{ compare_results|length if compare_results else 0 }}</strong>
+    </article>
+  </div>
+</header>
+
+<section class="panel-card">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Inventory</p>
+      <h2>Fleet node table</h2>
+    </div>
+    <div class="button-row">
+      <button type="button" onclick="toggleAllNodeSelection(true)">Select all</button>
+      <button type="button" class="ghost-button-dark" onclick="toggleAllNodeSelection(false)">Clear</button>
+    </div>
+  </div>
   <form method="post" action="/ui/nodes/favorites/all" class="inline-actions">
     <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
     <button type="submit">Queue Favorite=true For All Managed Nodes</button>
@@ -30,7 +54,7 @@
     <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
     <button type="submit">Queue NodeDB Favorites For Fleet</button>
   </form>
-  <table>
+  <div class="table-wrap"><table class="data-table">
     <tr>
       <th>Select</th><th>Provider</th><th>Node ID</th><th>Name</th><th>IP</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>
     </tr>
@@ -60,13 +84,18 @@
         {% endif %}
       </td>
       <td>{{ n.last_seen }}</td>
-      <td>{{ 'online' if n.reachable else 'offline' }}</td>
+      <td><span class="status-pill status-pill-{{ 'success' if n.reachable else 'danger' }}">{{ 'online' if n.reachable else 'offline' }}</span></td>
     </tr>
     {% endfor %}
-  </table>
+  </table></div>
 </section>
-<section class="card">
-  <h1>Compare Node Configurations</h1>
+<section class="panel-card">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Comparison</p>
+      <h2>Compare node configurations</h2>
+    </div>
+  </div>
   <p class="muted">Compare source node configuration against selected target nodes. Location differences are ignored by default.</p>
   <form method="post" action="/ui/nodes/compare" class="stack">
     <label>Source node
@@ -95,9 +124,14 @@
 </section>
 
 {% if compare_results %}
-<section class="card">
-  <h2>Comparison Results</h2>
-  <table>
+<section class="panel-card">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Results</p>
+      <h2>Comparison Results</h2>
+    </div>
+  </div>
+  <div class="table-wrap"><table class="data-table">
     <tr><th>Target</th><th>Status</th><th>Different Sections</th><th>Diff Count</th></tr>
     {% for row in compare_results %}
     <tr>
@@ -132,7 +166,7 @@
     </tr>
     {% endif %}
     {% endfor %}
-  </table>
+  </table></div>
 
   <h3>Synchronize From Source To Compared Targets</h3>
   <form method="post" action="/ui/nodes/compare-sync" class="stack">
@@ -151,8 +185,13 @@
 </section>
 {% endif %}
 
-<section class="card">
-  <h1>Batch Configure Nodes</h1>
+<section class="panel-card">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Bulk actions</p>
+      <h2>Batch Configure Nodes</h2>
+    </div>
+  </div>
   <p class="muted">Select nodes in the table above, then queue one shared configuration job.</p>
   <form method="post" action="/ui/nodes/batch-configure" class="stack" id="batch-config-form">
     <fieldset>
@@ -359,4 +398,5 @@ function toggleAllNodeSelection(state) {
   });
 }
 </script>
+</section>
 {% endblock %}

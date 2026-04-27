@@ -1,10 +1,37 @@
 {% extends "base.html" %}
 {% block content %}
-{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
-{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
-<section class="grid two">
-  <article class="card">
-    <h2>Identity</h2>
+<section class="page-shell">
+{% if ui_message %}<section class="panel-card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="panel-card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
+<header class="page-hero page-hero-ember">
+  <div>
+    <p class="eyebrow">Node workspace</p>
+    <h1>{{ node.short_name or node.provider_node_id }}</h1>
+    <p class="page-summary">Inspect one device cleanly, review identity and location, then make targeted changes without losing the rest of the application context.</p>
+  </div>
+  <div class="hero-metrics">
+    <article class="hero-metric">
+      <span>Provider</span>
+      <strong>{{ node.provider }}</strong>
+    </article>
+    <article class="hero-metric">
+      <span>Status</span>
+      <strong>{{ 'Online' if node.reachable else 'Offline' }}</strong>
+    </article>
+    <article class="hero-metric">
+      <span>Role</span>
+      <strong>{{ node.role or '-' }}</strong>
+    </article>
+  </div>
+</header>
+<section class="workspace-columns">
+  <article class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Identity</p>
+        <h2>Node metadata</h2>
+      </div>
+    </div>
     <p><b>Provider:</b> {{ node.provider }}</p>
     <p><b>Provider Node ID:</b> {{ node.provider_node_id }}</p>
     <p><b>Short/Long:</b> {{ node.short_name }} / {{ node.long_name }}</p>
@@ -13,14 +40,19 @@
     <p><b>Firmware/Hardware:</b> {{ node.firmware_version }} / {{ node.hardware_model }}</p>
     <p><b>Reachable:</b> {{ node.reachable }}</p>
     <h3>Endpoints (TCP)</h3>
-    <ul>
+    <ul class="subtle-list">
       {% for ep in node.endpoints %}<li>{{ ep.endpoint }} ({{ ep.source }})</li>{% endfor %}
     </ul>
   </article>
-  <article class="card">
-    <h2>Location</h2>
+  <article class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Location</p>
+        <h2>Preview and pick coordinates</h2>
+      </div>
+    </div>
     <p class="muted">Click map to set latitude/longitude in the form below.</p>
-    <div id="previewMap" style="height: 280px"></div>
+    <div id="previewMap" class="map-stage map-stage-small"></div>
     <script>
       const map = L.map('previewMap').setView([{{ node.latitude or 53.43 }}, {{ node.longitude or 14.55 }}], 10);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -44,8 +76,13 @@
     </script>
   </article>
 </section>
-<section class="card">
-  <h2>Configure Node</h2>
+<section class="panel-card">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Node changes</p>
+      <h2>Configure node</h2>
+    </div>
+  </div>
   <form method="post" action="/ui/nodes/{{ node.id }}/configure" class="grid two">
     <label>Short name
       <input type="text" name="short_name" value="{{ node.short_name or '' }}" />
@@ -185,12 +222,17 @@
   </form>
 </section>
 {% if structured_forms.supported %}
-<section class="card">
-  <h2>Structured Config Editor</h2>
+<section class="panel-card">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Structured mode</p>
+      <h2>Structured Config Editor</h2>
+    </div>
+  </div>
   <p class="muted">Enum fields are rendered as dropdown lists. This editor covers full Local/Module/Channel configuration tree.</p>
   <form method="post" action="/ui/nodes/{{ node.id }}/configure-structured" class="stack">
     <h3>Local Config</h3>
-    <table>
+    <div class="table-wrap"><table class="data-table">
       <tr><th>Path</th><th>Value</th></tr>
       {% for row in structured_forms.local_rows %}
       <tr>
@@ -218,9 +260,9 @@
         </td>
       </tr>
       {% endfor %}
-    </table>
+    </table></div>
     <h3>Module Config</h3>
-    <table>
+    <div class="table-wrap"><table class="data-table">
       <tr><th>Path</th><th>Value</th></tr>
       {% for row in structured_forms.module_rows %}
       <tr>
@@ -248,10 +290,10 @@
         </td>
       </tr>
       {% endfor %}
-    </table>
+    </table></div>
     {% for channel in structured_forms.channel_forms %}
     <h3>Channel {{ channel.index }}</h3>
-    <table>
+    <div class="table-wrap"><table class="data-table">
       <tr><th>Path</th><th>Value</th></tr>
       {% for row in channel.rows %}
       <tr>
@@ -279,7 +321,7 @@
         </td>
       </tr>
       {% endfor %}
-    </table>
+    </table></div>
     {% endfor %}
     <label>Dry run
       <input type="checkbox" name="dry_run" value="true" />
@@ -288,8 +330,13 @@
   </form>
 </section>
 {% endif %}
-<section class="card">
-  <h2>0-Hop Neighbors</h2>
+<section class="panel-card">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Neighborhood tools</p>
+      <h2>0-Hop Neighbors</h2>
+    </div>
+  </div>
   <p class="muted">Candidates are read from this node's current mesh database (`nodesInMesh`) and filtered by hop distance.</p>
   <form method="post" action="/ui/nodes/{{ node.id }}/zero-hop/import" class="grid two">
     <label>Target group name
@@ -343,7 +390,7 @@ CLIENT_BASE</textarea>
     </label>
     <div><button type="submit">Queue NodeDB Action On This Node</button></div>
   </form>
-  <table>
+  <div class="table-wrap"><table class="data-table">
     <tr><th>ID</th><th>Name</th><th>Role</th><th>HW</th><th>Hops</th><th>SNR</th><th>Last Heard</th><th>Managed</th><th>Pinned</th></tr>
     {% for n in zero_hop_candidates %}
     <tr>
@@ -373,10 +420,16 @@ CLIENT_BASE</textarea>
     {% if not zero_hop_candidates %}
     <tr><td colspan="9" class="muted">No 0-hop entries in current node snapshot.</td></tr>
     {% endif %}
-  </table>
+  </table></div>
 </section>
-<section class="card">
-  <h2>Node Info Snapshot</h2>
+<section class="workspace-columns">
+<section class="panel-card">
+  <div class="section-header compact-header">
+    <div>
+      <p class="eyebrow">Snapshot</p>
+      <h2>Node Info Snapshot</h2>
+    </div>
+  </div>
   <p><b>Owner:</b> {{ node.raw_metadata.get('owner', {}).get('longName') }} ({{ node.raw_metadata.get('owner', {}).get('shortName') }})</p>
   <p><b>My Node Num:</b> {{ node.raw_metadata.get('myInfo', {}).get('myNodeNum') }}</p>
   <p><b>Firmware:</b> {{ node.raw_metadata.get('metadata', {}).get('firmwareVersion') }}</p>
@@ -385,14 +438,26 @@ CLIENT_BASE</textarea>
   <p><b>Known mesh nodes:</b> {{ node.raw_metadata.get('nodesInMesh', {})|length }}</p>
   <p><b>Primary channel URL:</b> {{ node.raw_metadata.get('primaryChannelUrl') }}</p>
 </section>
-<section class="card">
-  <h2>Raw Provider Payload (Developer)</h2>
+<section class="panel-card">
+  <div class="section-header compact-header">
+    <div>
+      <p class="eyebrow">Developer payload</p>
+      <h2>Raw Provider Payload</h2>
+    </div>
+  </div>
   <pre>{{ node.raw_metadata }}</pre>
 </section>
-<section class="card">
-  <h2>Audit History</h2>
-  <table><tr><th>Time</th><th>Action</th><th>Actor</th><th>Source</th></tr>
+<section class="panel-card panel-card-span-2">
+  <div class="section-header compact-header">
+    <div>
+      <p class="eyebrow">Traceability</p>
+      <h2>Audit History</h2>
+    </div>
+  </div>
+  <div class="table-wrap"><table class="data-table"><tr><th>Time</th><th>Action</th><th>Actor</th><th>Source</th></tr>
     {% for e in audits %}<tr><td>{{ e.created_at }}</td><td>{{ e.action }}</td><td>{{ e.actor }}</td><td>{{ e.source }}</td></tr>{% endfor %}
-  </table>
+  </table></div>
+</section>
+</section>
 </section>
 {% endblock %}

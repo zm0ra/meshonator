@@ -1,17 +1,38 @@
 {% extends "base.html" %}
 {% block content %}
-{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
-{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
+<section class="page-shell">
+{% if ui_message %}<section class="panel-card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="panel-card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 {% set ds = default_settings if default_settings is defined and default_settings else {} %}
 {% set local = ds.get("local_config_patch", {}) %}
 {% set module = ds.get("module_config_patch", {}) %}
 {% set channels = ds.get("channels_patch", []) %}
 {% set primary = channels[0] if channels else {} %}
 {% set primary_settings = primary.get("settings", {}) if primary else {} %}
-<section class="card">
-  <h1>Default Settings</h1>
-  <p class="muted">Saved values are used as a reusable baseline for Meshtastic nodes.</p>
-  <form method="post" action="/ui/settings/defaults/save" class="grid two">
+<header class="page-hero page-hero-slate">
+  <div>
+    <p class="eyebrow">System and integrations</p>
+    <h1>Settings</h1>
+    <p class="page-summary">This page should eventually hold only integrations and system administration. For now it also carries baseline defaults, but the shell is aligned with the rest of the application.</p>
+  </div>
+  <div class="hero-metrics">
+    <article class="hero-metric">
+      <span>Providers</span>
+      <strong>{{ providers|length }}</strong>
+    </article>
+  </div>
+</header>
+
+<section class="workspace-columns">
+  <article class="panel-card panel-card-span-2">
+    <div class="section-header">
+      <div>
+        <p class="eyebrow">Baseline defaults</p>
+        <h2>Reusable Meshtastic defaults</h2>
+      </div>
+    </div>
+    <p class="muted">Saved values are used as a reusable baseline for Meshtastic nodes.</p>
+    <form method="post" action="/ui/settings/defaults/save" class="grid two">
     <h2>MQTT</h2>
     <label>Server
       <input type="text" name="mqtt_address" value="{{ module.get('mqtt', {}).get('address', '') }}" placeholder="172.30.250.10" />
@@ -152,16 +173,22 @@
       <input type="number" min="0" name="position_flags" value="{{ local.get('position', {}).get('positionFlags', '') }}" placeholder="3" />
     </label>
 
-    <div><button type="submit">Save Default Settings</button></div>
-  </form>
-  <form method="post" action="/ui/settings/defaults/apply" class="stack mt-1">
-    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-    <button type="submit">Queue Apply Default Settings To All Managed Meshtastic Nodes</button>
-  </form>
-</section>
-<section class="card">
-  <h1>Settings & Integrations</h1>
-  <table>
+      <div><button type="submit">Save Default Settings</button></div>
+    </form>
+    <form method="post" action="/ui/settings/defaults/apply" class="stack mt-1">
+      <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+      <button type="submit">Queue Apply Default Settings To All Managed Meshtastic Nodes</button>
+    </form>
+  </article>
+  <article class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Providers</p>
+        <h2>Health and capabilities</h2>
+      </div>
+    </div>
+    <div class="table-wrap">
+    <table class="data-table">
     <tr><th>Provider</th><th>Status</th><th>Experimental</th><th>Capabilities</th><th>Operation Matrix</th></tr>
     {% for p in providers %}
     <tr>
@@ -172,6 +199,9 @@
       <td><pre>{{ p.operation_matrix }}</pre></td>
     </tr>
     {% endfor %}
-  </table>
+    </table>
+    </div>
+  </article>
+</section>
 </section>
 {% endblock %}

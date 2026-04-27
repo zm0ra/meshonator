@@ -1,11 +1,35 @@
 {% extends "base.html" %}
 {% block content %}
-{% if ui_message %}<section class="card"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
-{% if ui_error %}<section class="card"><p class="error">{{ ui_error }}</p></section>{% endif %}
+<section class="page-shell">
+{% if ui_message %}<section class="panel-card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="panel-card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
-<section class="grid two">
-  <article class="card">
-    <h1>Create Group</h1>
+<header class="page-hero page-hero-canvas">
+  <div>
+    <p class="eyebrow">Targeting workspace</p>
+    <h1>Groups</h1>
+    <p class="page-summary">Groups should be operator targeting assets. This page now frames creation, membership, and rollout intent as one shared workspace instead of unrelated JSON blocks.</p>
+  </div>
+  <div class="hero-metrics">
+    <article class="hero-metric">
+      <span>Groups</span>
+      <strong>{{ groups_view|length }}</strong>
+    </article>
+    <article class="hero-metric">
+      <span>Discovered nodes</span>
+      <strong>{{ nodes|length }}</strong>
+    </article>
+  </div>
+</header>
+
+<section class="workspace-columns">
+  <article class="panel-card">
+    <div class="section-header">
+      <div>
+        <p class="eyebrow">Create</p>
+        <h2>New group</h2>
+      </div>
+    </div>
     <form method="post" action="/ui/groups/create" class="stack">
       <label>Name
         <input type="text" name="name" required placeholder="west-mesh" />
@@ -22,27 +46,23 @@
       <button type="submit">Create Group</button>
     </form>
   </article>
-  <article class="card">
-    <h2>Node Assignment</h2>
-    <p class="muted">Assign any discovered node into a manual group.</p>
-    <table>
-      <tr><th>Provider</th><th>Node</th><th>Name</th></tr>
-      {% for n in nodes %}
-      <tr>
-        <td>{{ n.provider }}</td>
-        <td><a href="/nodes/{{ n.id }}">{{ n.provider_node_id }}</a></td>
-        <td>{{ n.short_name }} / {{ n.long_name }}</td>
-      </tr>
-      {% endfor %}
-    </table>
+  <article class="panel-card panel-card-dark">
+    <p class="eyebrow">Design debt still present</p>
+    <h3>Dynamic filters and desired templates still use JSON.</h3>
+    <p class="muted">The shell is now consistent, but the next functional step should be replacing these raw fields with a proper rule builder and profile attachment model.</p>
   </article>
 </section>
 
 {% for entry in groups_view %}
-<section class="grid two">
-  <article class="card">
-    <h2>{{ entry.group.name }}</h2>
-    <p>{{ entry.group.description }}</p>
+<section class="workspace-columns">
+  <article class="panel-card">
+    <div class="section-header">
+      <div>
+        <p class="eyebrow">Group definition</p>
+        <h2>{{ entry.group.name }}</h2>
+      </div>
+    </div>
+    <p class="muted">{{ entry.group.description or 'No description provided.' }}</p>
     <form method="post" action="/ui/groups/{{ entry.group.id }}/configure" class="stack">
       <label>Description
         <input type="text" name="description" value="{{ entry.group.description or '' }}" />
@@ -101,7 +121,7 @@
       </label>
       <button type="submit">Save Group Config</button>
     </form>
-    <form method="post" action="/ui/groups/{{ entry.group.id }}/apply-template" class="stack mt-1">
+    <form method="post" action="/ui/groups/{{ entry.group.id }}/apply-template" class="stack mt-1 panel-divider-top">
       <label><input type="checkbox" name="dry_run" value="true" checked /> Dry run</label>
       <button type="submit">Queue Template Apply</button>
     </form>
@@ -123,8 +143,13 @@
       <button type="submit">Queue NodeDB Favorites For Group</button>
     </form>
   </article>
-  <article class="card">
-    <h3>Assign Node</h3>
+  <article class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Membership</p>
+        <h3>Assign and inspect members</h3>
+      </div>
+    </div>
     <form method="post" action="/ui/groups/{{ entry.group.id }}/assign-node" class="stack">
       <label>Node
         <select name="node_id">
@@ -136,14 +161,14 @@
       <button type="submit">Assign To Group</button>
     </form>
     <h3>Assigned Members</h3>
-    <ul>
+    <ul class="subtle-list">
       {% for member in entry.assigned %}
       <li><a href="/nodes/{{ member.id }}">{{ member.provider }} / {{ member.provider_node_id }}</a></li>
       {% endfor %}
       {% if not entry.assigned %}<li class="muted">No assigned members.</li>{% endif %}
     </ul>
     <h3>Resolved Members (assigned + dynamic)</h3>
-    <ul>
+    <ul class="subtle-list">
       {% for member in entry.resolved %}
       <li><a href="/nodes/{{ member.id }}">{{ member.provider }} / {{ member.provider_node_id }}</a></li>
       {% endfor %}
@@ -152,4 +177,5 @@
   </article>
 </section>
 {% endfor %}
+</section>
 {% endblock %}

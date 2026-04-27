@@ -5,30 +5,57 @@
   {% if ui_error %}<section class="card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
   <section class="dashboard-hero card">
-    <div class="dashboard-hero-copy">
-      <p class="eyebrow">Fleet Overview</p>
-      <h1>Operational dashboard for the full mesh fleet.</h1>
-      <p class="hero-copy">Track fleet health, launch the most common actions, and move quickly from issues to the right workspace.</p>
-      <div class="dashboard-meta-row">
-        <span class="status-pill status-pill-{{ worker_status.state }}">{{ worker_status.label }}</span>
-        <span class="meta-chip">Last sync {{ latest_sync_at }}</span>
-        <span class="meta-chip">Last discovery {{ latest_discovery_at }}</span>
-        <span class="meta-chip">Coverage {{ fleet_health.coverage }}</span>
+    <div class="dashboard-hero-main">
+      <div class="dashboard-hero-copy">
+        <p class="eyebrow">Fleet Overview</p>
+        <h1>Operational dashboard for the full mesh fleet.</h1>
+        <p class="hero-copy">See what needs attention first, keep the fleet fresh, and move into nodes, jobs, map, or settings without scanning a wall of equal-weight cards.</p>
+        <div class="dashboard-meta-row">
+          <span class="status-pill status-pill-{{ worker_status.state }}">{{ worker_status.label }}</span>
+          <span class="meta-chip">Last sync {{ latest_sync_at }}</span>
+          <span class="meta-chip">Last discovery {{ latest_discovery_at }}</span>
+          <span class="meta-chip">Coverage {{ fleet_health.coverage }}</span>
+        </div>
+      </div>
+
+      <div class="dashboard-signal-grid">
+        <div class="signal-card">
+          <span class="signal-label">Providers</span>
+          <strong class="signal-value">{{ fleet_health.provider_count }}</strong>
+          <span class="signal-meta">Active data sources</span>
+        </div>
+        <div class="signal-card">
+          <span class="signal-label">Recent jobs</span>
+          <strong class="signal-value">{{ recent_jobs|length }}</strong>
+          <span class="signal-meta">Latest operations listed below</span>
+        </div>
+        <div class="signal-card">
+          <span class="signal-label">Attention items</span>
+          <strong class="signal-value">{{ attention_items|length }}</strong>
+          <span class="signal-meta">Operational flags surfaced now</span>
+        </div>
       </div>
     </div>
-    <div class="dashboard-hero-actions">
+
+    <aside class="dashboard-stage-card">
+      <div class="stage-card-top">
+        <p class="eyebrow">Control Deck</p>
+        <h2>Run the two actions operators need most.</h2>
+      </div>
+
       <form method="post" action="/ui/sync/run" class="action-card action-card-primary stack">
         <div>
-          <h2>Sync Fleet</h2>
-          <p class="muted">Refresh inventory and reachability before making operational decisions.</p>
+          <h3>Sync Fleet</h3>
+          <p class="muted">Refresh inventory and reachability before making changes.</p>
         </div>
         <label class="compact-toggle"><input type="checkbox" name="quick" value="true" /> Quick sync only</label>
         <button type="submit">Run Sync</button>
       </form>
+
       <div class="action-card action-card-secondary stack">
         <div>
-          <h2>Explore Fleet</h2>
-          <p class="muted">Jump straight into nodes, jobs, the fleet map, or system settings.</p>
+          <h3>Explore Fleet</h3>
+          <p class="muted">Open the right workspace instead of hunting through the whole UI.</p>
         </div>
         <div class="action-links-grid">
           <a class="quick-link" href="/nodes">Open Nodes</a>
@@ -37,7 +64,7 @@
           <a class="quick-link" href="/settings">Open Settings</a>
         </div>
       </div>
-    </div>
+    </aside>
   </section>
 
   <section class="dashboard-metrics-grid">
@@ -51,7 +78,7 @@
   </section>
 
   <section class="dashboard-primary-grid">
-    <article class="card dashboard-panel">
+    <article class="card dashboard-panel dashboard-panel-contrast">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Priority Queue</p>
@@ -74,7 +101,7 @@
       </div>
     </article>
 
-    <article class="card dashboard-panel">
+    <article class="card dashboard-panel dashboard-panel-dark">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Action Center</p>
@@ -85,7 +112,7 @@
         <form method="post" action="/ui/discovery/scan" class="action-workflow stack">
           <div>
             <h3>Discovery scan</h3>
-            <p class="muted">Start a new discovery pass without leaving the dashboard.</p>
+            <p class="muted">Start a targeted discovery pass without dropping into a dense admin form.</p>
           </div>
           <label>Provider
             <select name="provider">
@@ -132,7 +159,7 @@
   </section>
 
   <section class="dashboard-secondary-grid">
-    <article class="card dashboard-panel">
+    <article class="card dashboard-panel dashboard-panel-soft">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Activity</p>
@@ -156,7 +183,7 @@
       </div>
     </article>
 
-    <article class="card dashboard-panel">
+    <article class="card dashboard-panel dashboard-panel-soft">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Audit</p>
@@ -182,7 +209,7 @@
   </section>
 
   <section class="dashboard-health-grid">
-    <article class="card dashboard-panel">
+    <article class="card dashboard-panel dashboard-panel-soft">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Providers</p>
@@ -202,7 +229,7 @@
       </div>
     </article>
 
-    <article class="card dashboard-panel">
+    <article class="card dashboard-panel dashboard-panel-soft">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Coverage</p>

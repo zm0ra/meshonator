@@ -12,7 +12,7 @@ from meshonator.audit.service import AuditService
 from meshonator.db.models import ManagedNodeModel, NodeConfigModel, NodeDesiredStateModel
 from meshonator.domain.models import ConfigPatch
 from meshonator.inventory.service import InventoryService
-from meshonator.providers.base import ProviderConnection
+from meshonator.providers.base import ProviderConnection, ProviderError
 from meshonator.providers.registry import ProviderRegistry
 
 
@@ -181,6 +181,71 @@ class OperationsService:
             metadata={"dry_run": dry_run, "result": result},
         )
         return result
+
+    def mutate_node_db(
+        self,
+        destination_node_id: UUID,
+        action: str,
+        target_node_ids: list[str],
+        actor: str,
+        source: str,
+        dry_run: bool = False,
+    ) -> dict:
+        destination = self.db.get(ManagedNodeModel, destination_node_id)
+        if destination is None:
+            raise ValueError("Destination node not found")
+        if not target_node_ids:
+            raise ValueError("No target nodes provided")
+        endpoint_row = destination.endpoints[0] if destination.endpoints else None
+        if endpoint_row is None:
+            raise ValueError("Destination node has no TCP endpoint")
+
+        provider = self.registry.get(destination.provider)
+        conn = None
+        applied: list[dict] = []
+        failures: list[dict] = []
+        try:
+            conn = provider.connect(
+                ProviderConnection(
+                    endpoint=endpoint_row.endpoint,
+                    host=endpoint_row.host,
+                    port=endpoint_row.port,
+                )
+            )
+            for target_node_id in target_node_ids:
+                try:
+                    result = provider.mutate_node_db(
+                        conn=conn,
+                        destination_node_id=destination.provider_node_id,
+                        action=action,
+                        target_node_id=target_node_id,
+                        dry_run=dry_run,
+                    )
+                    applied.append({"target_node_id": target_node_id, "result": result})
+                except ProviderError as exc:
+                    failures.append({"target_node_id": target_node_id, "error": str(exc)})
+        finally:
+            provider.disconnect(conn)
+
+        final_result = {
+            "destination_node_id": destination.provider_node_id,
+            "action": action,
+            "target_count": len(target_node_ids),
+            "applied_count": len(applied),
+            "failed_count": len(failures),
+            "applied": applied,
+            "failures": failures,
+            "dry_run": dry_run,
+        }
+        self.audit.log(
+            actor=actor,
+            source=source,
+            action="node.nodedb.mutate",
+            provider=destination.provider,
+            node_id=destination.id,
+            metadata=final_result,
+        )
+        return final_result
 
     def save_config_snapshot(self, node_id: UUID, config_type: str, config: dict) -> NodeConfigModel:
         version_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode("utf-8")).hexdigest()

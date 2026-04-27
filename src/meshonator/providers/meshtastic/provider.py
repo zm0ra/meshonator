@@ -232,6 +232,46 @@ class MeshtasticProvider(Provider):
 
         return {"provider_node_id": provider_node_id, "mode": "apply", "applied": applied, "supported": True}
 
+    def mutate_node_db(
+        self,
+        conn: Any,
+        destination_node_id: str,
+        action: str,
+        target_node_id: str,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        supported_actions = {"set_favorite", "remove_favorite", "remove_node"}
+        if action not in supported_actions:
+            raise ProviderError(f"Unsupported NodeDB action for meshtastic: {action}")
+        if dry_run:
+            return {
+                "destination_node_id": destination_node_id,
+                "target_node_id": target_node_id,
+                "action": action,
+                "mode": "dry_run",
+                "supported": True,
+            }
+
+        node = conn.getNode(destination_node_id, False)
+        if action == "set_favorite":
+            node.setFavorite(target_node_id)
+        elif action == "remove_favorite":
+            node.removeFavorite(target_node_id)
+        elif action == "remove_node":
+            node.removeNode(target_node_id)
+
+        # Remote NodeDB mutations expect ACK/NAK; local operations do not emit one.
+        if node != conn.localNode:
+            conn.waitForAckNak()
+
+        return {
+            "destination_node_id": destination_node_id,
+            "target_node_id": target_node_id,
+            "action": action,
+            "mode": "apply",
+            "supported": True,
+        }
+
 
 def _safe_dict(value: Any) -> dict[str, Any]:
     if value is None:

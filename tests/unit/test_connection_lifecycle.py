@@ -54,6 +54,14 @@ class _LifecycleProvider:
     def apply_config_patch(self, conn, provider_node_id, patch, dry_run):
         return {"ok": True}
 
+    def mutate_node_db(self, conn, destination_node_id, action, target_node_id, dry_run=False):
+        return {
+            "destination_node_id": destination_node_id,
+            "action": action,
+            "target_node_id": target_node_id,
+            "dry_run": dry_run,
+        }
+
 
 def test_operations_service_disconnects_after_patch(db) -> None:
     provider = _LifecycleProvider()
@@ -198,4 +206,47 @@ def test_sync_service_disconnects_after_endpoint_sync(db) -> None:
     service = SyncService(db, registry)
     service.sync_endpoint(str(endpoint.id), quick=True)
 
+    assert provider.disconnect_calls == 1
+
+
+def test_operations_service_mutate_node_db_disconnects_and_returns_summary(db) -> None:
+    provider = _LifecycleProvider()
+    registry = ProviderRegistry()
+    registry._providers["meshtastic"] = provider
+
+    node = ManagedNodeModel(
+        provider="meshtastic",
+        provider_node_id="!dst",
+        short_name="DST",
+        first_seen=datetime.now(timezone.utc),
+        last_seen=datetime.now(timezone.utc),
+        reachable=True,
+    )
+    db.add(node)
+    db.flush()
+    db.add(
+        NodeEndpointModel(
+            node_id=node.id,
+            endpoint="tcp://172.30.105.36:4403",
+            host="172.30.105.36",
+            port=4403,
+            source="test",
+            is_primary=True,
+            last_seen=datetime.now(timezone.utc),
+        )
+    )
+    db.commit()
+
+    result = OperationsService(db, registry).mutate_node_db(
+        destination_node_id=node.id,
+        action="set_favorite",
+        target_node_ids=["!a1f9eab4", "!53047302"],
+        actor="tester",
+        source="test",
+        dry_run=True,
+    )
+
+    assert result["applied_count"] == 2
+    assert result["failed_count"] == 0
+    assert provider.connect_calls == 1
     assert provider.disconnect_calls == 1

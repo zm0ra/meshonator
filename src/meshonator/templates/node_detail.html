@@ -319,6 +319,30 @@ CLIENT_BASE</textarea>
     </label>
     <div><button type="submit">Queue Favorite=true For Matching Managed Nodes</button></div>
   </form>
+  <form method="post" action="/ui/nodes/{{ node.id }}/zero-hop/nodedb" class="grid two" style="margin-top: 1rem">
+    <label>NodeDB action
+      <select name="action">
+        <option value="set_favorite">Set favorite node</option>
+        <option value="remove_favorite">Remove favorite node</option>
+        <option value="remove_node">Remove node from NodeDB</option>
+      </select>
+    </label>
+    <label>Max hops
+      <input type="number" name="max_hops" min="0" value="0" />
+    </label>
+    <label>Dry run
+      <input type="checkbox" name="dry_run" value="true" />
+    </label>
+    <label>Allowed roles (one per line)
+      <textarea name="allowed_roles_text" rows="4">ROUTER
+ROUTER_LATE
+CLIENT_BASE</textarea>
+    </label>
+    <label style="grid-column: 1 / -1;">Explicit target node IDs (optional, one per line)
+      <textarea name="selected_candidate_ids_text" rows="4" placeholder="!a1f9eab4&#10;!53047302"></textarea>
+    </label>
+    <div><button type="submit">Queue NodeDB Action On This Node</button></div>
+  </form>
   <table>
     <tr><th>ID</th><th>Name</th><th>Role</th><th>HW</th><th>Hops</th><th>SNR</th><th>Last Heard</th><th>Managed</th><th>Pinned</th></tr>
     {% for n in zero_hop_candidates %}

@@ -52,6 +52,16 @@ class Provider(ABC):
         # Default no-op for providers that do not keep persistent sockets.
         return None
 
+    def mutate_node_db(
+        self,
+        conn: Any,
+        destination_node_id: str,
+        action: str,
+        target_node_id: str,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        raise ProviderError(f"NodeDB action {action!r} is unsupported by provider {self.name}")
+
     @abstractmethod
     def fetch_nodes(self, conn: Any) -> list[ManagedNode]:
         raise NotImplementedError

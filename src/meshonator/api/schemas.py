@@ -43,3 +43,9 @@ class GroupCreateRequest(BaseModel):
     description: str | None = None
     dynamic_filter: dict[str, Any] = Field(default_factory=dict)
     desired_config_template: dict[str, Any] = Field(default_factory=dict)
+
+
+class NodeDbMutationRequest(BaseModel):
+    action: str
+    target_node_ids: list[str] = Field(default_factory=list)
+    dry_run: bool = True

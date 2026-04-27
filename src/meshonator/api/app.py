@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
-from meshonator.api.schemas import BatchPatchRequest, ConfigPatchRequest, DiscoveryRequest, GroupCreateRequest
+from meshonator.api.schemas import BatchPatchRequest, ConfigPatchRequest, DiscoveryRequest, GroupCreateRequest, NodeDbMutationRequest
 from meshonator.audit.service import AuditService
 from meshonator.auth.security import CurrentUser, authenticate_user, bootstrap_admin, require_role, require_session_user
 from meshonator.config.settings import get_settings
@@ -40,6 +40,7 @@ from meshonator.jobs.queue import (
     enqueue_discovery_job,
     enqueue_group_patch_job,
     enqueue_multi_node_patch_job,
+    enqueue_node_nodedb_job,
     enqueue_node_patch_job,
     enqueue_sync_job,
 )
@@ -1824,6 +1825,76 @@ def ui_node_zero_hop_favorites(
         return RedirectResponse(url=f"/nodes/{node_id}?error={error}", status_code=303)
 
 
+@app.post("/ui/nodes/{node_id}/zero-hop/nodedb")
+def ui_node_zero_hop_nodedb(
+    node_id: UUID,
+    action: str = Form("set_favorite"),
+    allowed_roles_text: str = Form("ROUTER\nROUTER_LATE\nCLIENT_BASE"),
+    max_hops: int = Form(0),
+    selected_candidate_ids_text: str = Form(""),
+    dry_run: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        node = db.get(ManagedNodeModel, node_id)
+        if node is None:
+            return RedirectResponse(url=f"/nodes/{node_id}?error=Node+not+found", status_code=303)
+        if action not in {"set_favorite", "remove_favorite", "remove_node"}:
+            return RedirectResponse(url=f"/nodes/{node_id}?error=Unsupported+NodeDB+action", status_code=303)
+
+        allowed_roles = set(_normalize_roles(allowed_roles_text))
+        candidates = _filter_zero_hop_candidates(
+            node.raw_metadata or {},
+            max_hops=max_hops,
+            allowed_roles=allowed_roles,
+        )
+        candidate_ids = [item["id"] for item in candidates if isinstance(item.get("id"), str)]
+        if not candidate_ids:
+            return RedirectResponse(url=f"/nodes/{node_id}?error=No+matching+0-hop+nodes", status_code=303)
+
+        selected = _parse_multi_value(selected_candidate_ids_text)
+        selected_set = set(selected)
+        targets = [item for item in candidate_ids if (not selected_set or item in selected_set)]
+        if not targets:
+            return RedirectResponse(url=f"/nodes/{node_id}?error=No+valid+target+nodes+selected", status_code=303)
+
+        job = JobsService(db).create(
+            job_type="node_nodedb_mutation",
+            requested_by=user.username,
+            source="ui",
+            payload={
+                "destination_node_id": str(node_id),
+                "action": action,
+                "target_node_ids": targets,
+                "dry_run": dry_run,
+            },
+        )
+        enqueue_node_nodedb_job(job.id, registry)
+
+        AuditService(db).log(
+            actor=user.username,
+            source="ui",
+            action="node.zero_hop.nodedb.queue",
+            provider=node.provider,
+            node_id=node.id,
+            metadata={
+                "action": action,
+                "max_hops": max_hops,
+                "allowed_roles": sorted(allowed_roles),
+                "candidate_count": len(candidate_ids),
+                "selected_count": len(targets),
+                "dry_run": dry_run,
+                "job_id": str(job.id),
+            },
+        )
+        message = quote_plus(f"Queued NodeDB action {action} for {len(targets)} nodes. Job ID: {job.id}")
+        return RedirectResponse(url=f"/nodes/{node_id}?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"0-hop NodeDB action failed: {exc}")
+        return RedirectResponse(url=f"/nodes/{node_id}?error={error}", status_code=303)
+
+
 @app.get("/map", response_class=HTMLResponse)
 def map_page(
     request: Request,
@@ -2322,6 +2393,38 @@ def api_patch_node(
     if operation_matrix.write_config.value == "unsupported_or_restricted":
         raise HTTPException(status_code=400, detail="Provider does not support remote config write")
     return OperationsService(db, registry).apply_patch(node_id, patch, actor=user.username, source="api", dry_run=dry_run)
+
+
+@app.post("/api/nodes/{node_id}/nodedb")
+def api_node_nodedb_mutation(
+    node_id: UUID,
+    payload: NodeDbMutationRequest,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> dict:
+    action = payload.action.strip().lower()
+    if action not in {"set_favorite", "remove_favorite", "remove_node"}:
+        raise HTTPException(status_code=400, detail="Unsupported NodeDB action")
+    targets = [item.strip() for item in payload.target_node_ids if item.strip()]
+    if not targets:
+        raise HTTPException(status_code=400, detail="No target_node_ids provided")
+    node = db.get(ManagedNodeModel, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    job = JobsService(db).create(
+        job_type="node_nodedb_mutation",
+        requested_by=user.username,
+        source="api",
+        payload={
+            "destination_node_id": str(node_id),
+            "action": action,
+            "target_node_ids": targets,
+            "dry_run": payload.dry_run,
+        },
+    )
+    enqueue_node_nodedb_job(job.id, registry)
+    return {"job_id": str(job.id)}
 
 
 @app.post("/api/batch/patch")

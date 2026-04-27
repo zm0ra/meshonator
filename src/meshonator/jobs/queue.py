@@ -51,6 +51,11 @@ def enqueue_multi_node_patch_job(job_id: UUID, registry: ProviderRegistry) -> No
         executor.submit(_run_multi_node_patch_job, job_id, registry)
 
 
+def enqueue_node_nodedb_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    if settings.job_executor_mode == "local":
+        executor.submit(_run_node_nodedb_job, job_id, registry)
+
+
 def run_job(job_id: UUID, registry: ProviderRegistry) -> None:
     with SessionLocal() as db:
         job = db.get(JobModel, job_id)
@@ -68,6 +73,8 @@ def run_job(job_id: UUID, registry: ProviderRegistry) -> None:
         _run_node_patch_job(job_id, registry)
     elif job_type == "multi_node_config_patch":
         _run_multi_node_patch_job(job_id, registry)
+    elif job_type == "node_nodedb_mutation":
+        _run_node_nodedb_job(job_id, registry)
     else:
         with SessionLocal() as db:
             jobs = JobsService(db)
@@ -78,6 +85,67 @@ def run_job(job_id: UUID, registry: ProviderRegistry) -> None:
                 message=f"Unsupported job type: {job_type}",
                 details={},
             )
+            jobs.finish(job_id, success=False)
+
+
+def _run_node_nodedb_job(job_id: UUID, registry: ProviderRegistry) -> None:
+    with SessionLocal() as db:
+        jobs = JobsService(db)
+        job = db.get(JobModel, job_id)
+        if job is None:
+            return
+        jobs.start(job_id)
+        payload = job.payload or {}
+        destination_node_id = payload.get("destination_node_id")
+        action = str(payload.get("action", "")).strip()
+        target_node_ids = payload.get("target_node_ids", [])
+        dry_run = bool(payload.get("dry_run", True))
+
+        try:
+            if destination_node_id is None:
+                raise ValueError("Missing destination_node_id")
+            if not action:
+                raise ValueError("Missing action")
+            if not isinstance(target_node_ids, list) or not target_node_ids:
+                raise ValueError("No target nodes selected")
+            targets = [str(item).strip() for item in target_node_ids if isinstance(item, str) and item.strip()]
+            if not targets:
+                raise ValueError("No valid target node IDs provided")
+
+            result = OperationsService(db, registry).mutate_node_db(
+                destination_node_id=UUID(destination_node_id),
+                action=action,
+                target_node_ids=targets,
+                actor=job.requested_by,
+                source=job.source,
+                dry_run=dry_run,
+            )
+
+            status = "success" if result.get("failed_count", 0) == 0 else "failed"
+            jobs.add_result(
+                job_id=job_id,
+                status=status,
+                node_id=UUID(destination_node_id),
+                message=f"NodeDB mutation {action} finished ({result['applied_count']} ok, {result['failed_count']} failed)",
+                details={"result": result},
+            )
+            jobs.finish(job_id, success=(result.get("failed_count", 0) == 0))
+            AuditService(db).log(
+                actor=job.requested_by,
+                source=job.source,
+                action="node.nodedb.mutation.queued",
+                node_id=UUID(destination_node_id),
+                metadata={
+                    "dry_run": dry_run,
+                    "action": action,
+                    "target_count": len(targets),
+                    "completed_at": datetime.now(UTC).isoformat(),
+                    "result": result,
+                },
+            )
+        except Exception as exc:
+            db.rollback()
+            jobs.add_result(job_id=job_id, status="failed", node_id=None, message=str(exc), details={})
             jobs.finish(job_id, success=False)
 
 

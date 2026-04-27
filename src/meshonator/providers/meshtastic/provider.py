@@ -252,17 +252,15 @@ class MeshtasticProvider(Provider):
                 "supported": True,
             }
 
-        node = conn.getNode(destination_node_id, False)
+        # Meshonator manages one TCP endpoint per station; NodeDB mutations should
+        # target the station connected on this endpoint (localNode).
+        node = conn.localNode
         if action == "set_favorite":
             node.setFavorite(target_node_id)
         elif action == "remove_favorite":
             node.removeFavorite(target_node_id)
         elif action == "remove_node":
             node.removeNode(target_node_id)
-
-        # Remote NodeDB mutations expect ACK/NAK; local operations do not emit one.
-        if node != conn.localNode:
-            conn.waitForAckNak()
 
         return {
             "destination_node_id": destination_node_id,

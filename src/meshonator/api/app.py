@@ -1188,6 +1188,8 @@ def dashboard(
             "fleet_health": {
                 "coverage": f"{mapped_nodes}/{total_nodes}" if total_nodes else "0/0",
                 "provider_count": len(providers_health),
+                "reachable": online_nodes,
+                "total_nodes": total_nodes,
             },
             "ui_message": ui_message,
             "ui_error": ui_error,

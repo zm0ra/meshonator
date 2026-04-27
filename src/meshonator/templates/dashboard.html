@@ -4,13 +4,13 @@
   {% if ui_message %}<section class="card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
   {% if ui_error %}<section class="card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
-  <section class="dashboard-hero card">
-    <div class="dashboard-hero-main">
-      <div class="dashboard-hero-copy">
+  <section class="dashboard-atlas card">
+    <div class="atlas-copy">
+      <div>
         <p class="eyebrow">Fleet Overview</p>
         <h1>Operational dashboard for the full mesh fleet.</h1>
-        <p class="hero-copy">See what needs attention first, keep the fleet fresh, and move into nodes, jobs, map, or settings without scanning a wall of equal-weight cards.</p>
-        <div class="dashboard-meta-row">
+        <p class="atlas-summary">A fresh mission board for daily operations: read fleet health in one sweep, launch the two core workflows immediately, and understand what changed without deciphering a wall of equal-weight cards.</p>
+        <div class="atlas-legend">
           <span class="status-pill status-pill-{{ worker_status.state }}">{{ worker_status.label }}</span>
           <span class="meta-chip">Last sync {{ latest_sync_at }}</span>
           <span class="meta-chip">Last discovery {{ latest_discovery_at }}</span>
@@ -18,236 +18,225 @@
         </div>
       </div>
 
-      <div class="dashboard-signal-grid">
-        <div class="signal-card">
-          <span class="signal-label">Providers</span>
-          <strong class="signal-value">{{ fleet_health.provider_count }}</strong>
-          <span class="signal-meta">Active data sources</span>
+      <div class="atlas-highlight-strip">
+        <div class="atlas-highlight">
+          <span class="atlas-highlight-label">Providers</span>
+          <strong class="atlas-highlight-value">{{ fleet_health.provider_count }}</strong>
+          <p>Active data sources</p>
         </div>
-        <div class="signal-card">
-          <span class="signal-label">Recent jobs</span>
-          <strong class="signal-value">{{ recent_jobs|length }}</strong>
-          <span class="signal-meta">Latest operations listed below</span>
+        <div class="atlas-highlight">
+          <span class="atlas-highlight-label">Recent jobs</span>
+          <strong class="atlas-highlight-value">{{ recent_jobs|length }}</strong>
+          <p>Latest operations listed below</p>
         </div>
-        <div class="signal-card">
-          <span class="signal-label">Attention items</span>
-          <strong class="signal-value">{{ attention_items|length }}</strong>
-          <span class="signal-meta">Operational flags surfaced now</span>
+        <div class="atlas-highlight">
+          <span class="atlas-highlight-label">Attention items</span>
+          <strong class="atlas-highlight-value">{{ attention_items|length }}</strong>
+          <p>Operational flags surfaced now</p>
         </div>
       </div>
     </div>
 
-    <aside class="dashboard-stage-card">
-      <div class="stage-card-top">
-        <p class="eyebrow">Control Deck</p>
-        <h2>Run the two actions operators need most.</h2>
+    <aside class="command-dock">
+      <div class="command-dock-header">
+        <p class="eyebrow">Command Dock</p>
+        <h2>Act first, investigate second.</h2>
       </div>
 
-      <form method="post" action="/ui/sync/run" class="action-card action-card-primary stack">
+      <form method="post" action="/ui/sync/run" class="command-card command-card-sync stack">
         <div>
           <h3>Sync Fleet</h3>
-          <p class="muted">Refresh inventory and reachability before making changes.</p>
+          <p class="muted">Refresh inventory and reachability before touching configuration or triaging stale nodes.</p>
         </div>
         <label class="compact-toggle"><input type="checkbox" name="quick" value="true" /> Quick sync only</label>
         <button type="submit">Run Sync</button>
       </form>
 
-      <div class="action-card action-card-secondary stack">
+      <form method="post" action="/ui/discovery/scan" class="command-card command-card-discovery stack">
         <div>
-          <h3>Explore Fleet</h3>
-          <p class="muted">Open the right workspace instead of hunting through the whole UI.</p>
+          <h3>Discovery scan</h3>
+          <p class="muted">Launch a targeted scan from the dashboard without dropping into a separate admin screen.</p>
         </div>
-        <div class="action-links-grid">
-          <a class="quick-link" href="/nodes">Open Nodes</a>
-          <a class="quick-link" href="/jobs">Open Jobs</a>
-          <a class="quick-link" href="/map">Open Map</a>
-          <a class="quick-link" href="/settings">Open Settings</a>
-        </div>
+        <label>Provider
+          <select name="provider">
+            {% for provider in providers %}
+            <option value="{{ provider }}">{{ provider }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Hosts
+          <textarea name="hosts_text" rows="2" placeholder="10.10.0.15&#10;node.example.local"></textarea>
+        </label>
+        <details class="command-details">
+          <summary>Advanced discovery fields</summary>
+          <div class="stack mt-1">
+            <label>CIDR ranges
+              <textarea name="cidrs_text" rows="2" placeholder="10.10.0.0/24"></textarea>
+            </label>
+            <label>Manual endpoints
+              <textarea name="endpoints_text" rows="2" placeholder="tcp://10.10.0.20:4403"></textarea>
+            </label>
+            <label>Port override
+              <input type="number" name="port" min="1" max="65535" placeholder="4403" />
+            </label>
+          </div>
+        </details>
+        <button type="submit">Run Discovery</button>
+      </form>
+
+      <div class="command-links">
+        <a class="command-link" href="/nodes">Open Nodes</a>
+        <a class="command-link" href="/jobs">Open Jobs</a>
+        <a class="command-link" href="/map">Open Map</a>
+        <a class="command-link" href="/settings">Open Settings</a>
       </div>
     </aside>
   </section>
 
-  <section class="dashboard-metrics-grid">
+  <section class="dashboard-metric-board">
     {% for metric in metrics %}
-    <a href="{{ metric.href }}" class="metric-card metric-card-{{ metric.tone }}">
-      <span class="metric-label">{{ metric.label }}</span>
-      <strong class="metric-value">{{ metric.value }}</strong>
-      <span class="metric-meta">{{ metric.meta }}</span>
+    <a href="{{ metric.href }}" class="metric-tile metric-tile-{{ metric.tone }}">
+      <span class="metric-tile-label">{{ metric.label }}</span>
+      <strong class="metric-tile-value">{{ metric.value }}</strong>
+      <span class="metric-tile-meta">{{ metric.meta }}</span>
     </a>
     {% endfor %}
   </section>
 
-  <section class="dashboard-primary-grid">
-    <article class="card dashboard-panel dashboard-panel-contrast">
-      <div class="section-heading">
+  <section class="dashboard-insight-grid">
+    <article class="card priority-lane">
+      <div class="lane-header">
         <div>
           <p class="eyebrow">Priority Queue</p>
           <h2>Needs attention</h2>
         </div>
       </div>
-      <div class="attention-list">
+      <div class="priority-stack">
         {% for item in attention_items %}
-        <a href="{{ item.href }}" class="attention-item attention-item-{{ item.tone }}">
-          <div class="attention-item-main">
-            <div class="attention-item-header">
-              <span class="status-pill status-pill-{{ item.tone }}">{{ item.count }}</span>
-              <strong>{{ item.title }}</strong>
-            </div>
-            <p class="muted">{{ item.description }}</p>
+        <a href="{{ item.href }}" class="priority-card priority-card-{{ item.tone }}">
+          <div class="priority-card-head">
+            <span class="status-pill status-pill-{{ item.tone }}">{{ item.count }}</span>
+            <strong>{{ item.title }}</strong>
           </div>
-          <span class="attention-cta">{{ item.cta }}</span>
+          <p class="muted">{{ item.description }}</p>
+          <span class="priority-card-cta">{{ item.cta }}</span>
         </a>
         {% endfor %}
       </div>
     </article>
 
-    <article class="card dashboard-panel dashboard-panel-dark">
-      <div class="section-heading">
+    <article class="card activity-lane">
+      <div class="lane-header">
         <div>
-          <p class="eyebrow">Action Center</p>
-          <h2>Launch operations</h2>
+          <p class="eyebrow">Operational Feed</p>
+          <h2>Jobs and changes in motion</h2>
         </div>
       </div>
-      <div class="dashboard-actions-stack">
-        <form method="post" action="/ui/discovery/scan" class="action-workflow stack">
-          <div>
-            <h3>Discovery scan</h3>
-            <p class="muted">Start a targeted discovery pass without dropping into a dense admin form.</p>
+      <div class="activity-columns">
+        <section class="timeline-section">
+          <div class="timeline-header">
+            <h3>Recent jobs</h3>
+            <a href="/jobs">View all</a>
           </div>
-          <label>Provider
-            <select name="provider">
-              {% for provider in providers %}
-              <option value="{{ provider }}">{{ provider }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>Hosts
-            <textarea name="hosts_text" rows="2" placeholder="10.10.0.15&#10;node.example.local"></textarea>
-          </label>
-          <details class="action-workflow-details">
-            <summary>Advanced discovery fields</summary>
-            <div class="stack mt-1">
-              <label>CIDR ranges
-                <textarea name="cidrs_text" rows="2" placeholder="10.10.0.0/24"></textarea>
-              </label>
-              <label>Manual endpoints
-                <textarea name="endpoints_text" rows="2" placeholder="tcp://10.10.0.20:4403"></textarea>
-              </label>
-              <label>Port override
-                <input type="number" name="port" min="1" max="65535" placeholder="4403" />
-              </label>
-            </div>
-          </details>
-          <button type="submit">Run Discovery</button>
-        </form>
+          <div class="timeline-stack">
+            {% for job in recent_jobs %}
+            <a href="/jobs" class="timeline-item">
+              <div>
+                <div class="timeline-title-row">
+                  <strong>{{ job.job_type }}</strong>
+                  <span class="status-pill status-pill-{{ 'success' if job.status == 'success' else ('danger' if job.status == 'failed' else 'warning') }}">{{ job.status }}</span>
+                </div>
+                <p class="muted">{{ job.requested_by }} via {{ job.source }}</p>
+              </div>
+              <span class="timeline-time">{{ job.created_at }}</span>
+            </a>
+            {% endfor %}
+          </div>
+        </section>
 
-        <div class="action-status-card">
-          <h3>Execution status</h3>
-          <p class="muted">{{ worker_status.detail }}</p>
+        <section class="timeline-section timeline-section-audit">
+          <div class="timeline-header">
+            <h3>Recent changes</h3>
+            <a href="/audit">View all</a>
+          </div>
+          <div class="timeline-stack">
+            {% for entry in recent_changes %}
+            <a href="/audit" class="timeline-item">
+              <div>
+                <div class="timeline-title-row">
+                  <strong>{{ entry.action }}</strong>
+                  <span class="status-pill status-pill-neutral">{{ entry.actor }}</span>
+                </div>
+                <p class="muted">{{ entry.source or 'ui' }}</p>
+              </div>
+              <span class="timeline-time">{{ entry.created_at }}</span>
+            </a>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+    </article>
+
+    <div class="system-stack">
+      <article class="card system-card system-card-state">
+        <div class="lane-header compact-header">
+          <div>
+            <p class="eyebrow">System State</p>
+            <h2>Execution status</h2>
+          </div>
+        </div>
+        <p class="muted">{{ worker_status.detail }}</p>
+        <div class="state-list">
           {% if latest_sync_job %}
-          <p class="action-status-line"><span class="status-pill status-pill-neutral">Latest sync</span> {{ latest_sync_job.status }} from {{ latest_sync_job.source }}</p>
+          <p class="state-row"><span class="status-pill status-pill-neutral">Latest sync</span> {{ latest_sync_job.status }} from {{ latest_sync_job.source }}</p>
           {% endif %}
           {% if latest_discovery_job %}
-          <p class="action-status-line"><span class="status-pill status-pill-neutral">Latest discovery</span> {{ latest_discovery_job.status }}</p>
+          <p class="state-row"><span class="status-pill status-pill-neutral">Latest discovery</span> {{ latest_discovery_job.status }}</p>
           {% endif %}
           {% if latest_discovery_progress %}
           <p class="muted">{{ latest_discovery_progress.message }}</p>
           {% endif %}
         </div>
-      </div>
-    </article>
-  </section>
+      </article>
 
-  <section class="dashboard-secondary-grid">
-    <article class="card dashboard-panel dashboard-panel-soft">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Activity</p>
-          <h2>Recent jobs</h2>
-        </div>
-        <a href="/jobs">View all</a>
-      </div>
-      <div class="activity-feed">
-        {% for job in recent_jobs %}
-        <a href="/jobs" class="activity-item">
+      <article class="card system-card">
+        <div class="lane-header compact-header">
           <div>
-            <div class="activity-title-row">
-              <strong>{{ job.job_type }}</strong>
-              <span class="status-pill status-pill-{{ 'success' if job.status == 'success' else ('danger' if job.status == 'failed' else 'warning') }}">{{ job.status }}</span>
-            </div>
-            <p class="muted">{{ job.requested_by }} via {{ job.source }}</p>
+            <p class="eyebrow">Providers</p>
+            <h2>Health snapshot</h2>
           </div>
-          <span class="activity-time">{{ job.created_at }}</span>
-        </a>
-        {% endfor %}
-      </div>
-    </article>
-
-    <article class="card dashboard-panel dashboard-panel-soft">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Audit</p>
-          <h2>Recent changes</h2>
         </div>
-        <a href="/audit">View all</a>
-      </div>
-      <div class="activity-feed">
-        {% for entry in recent_changes %}
-        <a href="/audit" class="activity-item">
+        <div class="provider-stack">
+          {% for provider in providers_health %}
+          <div class="provider-line">
+            <div class="timeline-title-row">
+              <strong>{{ provider.provider }}</strong>
+              <span class="status-pill status-pill-{{ 'success' if provider.status == 'ok' else 'warning' }}">{{ provider.status }}</span>
+            </div>
+            <p class="muted">{{ provider.details if provider.details else 'No extra provider details reported.' }}</p>
+          </div>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="card system-card">
+        <div class="lane-header compact-header">
           <div>
-            <div class="activity-title-row">
-              <strong>{{ entry.action }}</strong>
-              <span class="status-pill status-pill-neutral">{{ entry.actor }}</span>
-            </div>
-            <p class="muted">{{ entry.source or 'ui' }}</p>
+            <p class="eyebrow">Coverage</p>
+            <h2>Fleet distribution</h2>
           </div>
-          <span class="activity-time">{{ entry.created_at }}</span>
-        </a>
-        {% endfor %}
-      </div>
-    </article>
-  </section>
-
-  <section class="dashboard-health-grid">
-    <article class="card dashboard-panel dashboard-panel-soft">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Providers</p>
-          <h2>Provider health</h2>
         </div>
-      </div>
-      <div class="provider-health-grid">
-        {% for provider in providers_health %}
-        <div class="provider-health-card">
-          <div class="activity-title-row">
-            <strong>{{ provider.provider }}</strong>
-            <span class="status-pill status-pill-{{ 'success' if provider.status == 'ok' else 'warning' }}">{{ provider.status }}</span>
+        <div class="distribution-list">
+          {% for item in provider_summary %}
+          <div class="distribution-row">
+            <span>{{ item[0] }}</span>
+            <strong>{{ item[1] }} nodes</strong>
           </div>
-          <p class="muted">{{ provider.details if provider.details else 'No extra provider details reported.' }}</p>
+          {% endfor %}
         </div>
-        {% endfor %}
-      </div>
-    </article>
-
-    <article class="card dashboard-panel dashboard-panel-soft">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Coverage</p>
-          <h2>Fleet distribution</h2>
-        </div>
-      </div>
-      <div class="provider-summary-list">
-        {% for item in provider_summary %}
-        <div class="summary-row">
-          <span>{{ item[0] }}</span>
-          <strong>{{ item[1] }} nodes</strong>
-        </div>
-        {% endfor %}
-      </div>
-      <div class="coverage-note">
         <p class="muted">Use the map to validate coordinates and the nodes workspace to correct missing metadata.</p>
-      </div>
-    </article>
+      </article>
+    </div>
   </section>
 </section>
 {% endblock %}

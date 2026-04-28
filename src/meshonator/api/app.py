@@ -6,6 +6,8 @@ from typing import Any
 from urllib.parse import quote_plus, urlencode
 from uuid import UUID
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -61,6 +63,7 @@ settings = get_settings()
 registry = ProviderRegistry()
 
 app = FastAPI(title="Meshonator", version="0.1.0")
+scheduler = BackgroundScheduler(timezone="UTC")
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=60 * 60 * 8)
 app.add_middleware(
     CORSMiddleware,
@@ -72,6 +75,36 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="src/meshonator/static"), name="static")
 templates = Jinja2Templates(directory="src/meshonator/templates")
+
+
+def _scheduled_reachability() -> None:
+    with Session(engine) as db:
+        SyncService(db, registry).refresh_reachability(timeout=settings.scheduler_reachability_timeout_s)
+
+
+def _scheduled_sync() -> None:
+    with Session(engine) as db:
+        SyncService(db, registry).sync_all(quick=True)
+
+
+def _ensure_scheduler_started() -> None:
+    if not settings.scheduler_enabled or scheduler.running:
+        return
+    scheduler.add_job(
+        _scheduled_reachability,
+        CronTrigger.from_crontab(settings.scheduler_reachability_cron),
+        id="periodic_reachability_probe",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _scheduled_sync,
+        CronTrigger.from_crontab(settings.scheduler_sync_cron),
+        id="periodic_quick_sync",
+        replace_existing=True,
+    )
+    scheduler.start()
+
+
 def _humanize_identifier(raw: str) -> str:
     return raw.replace("_", " ").replace(".", " ").strip().title()
 
@@ -1278,6 +1311,13 @@ def startup() -> None:
             role=settings.bootstrap_admin_role,
         )
         JobsService(db).recover_stale_running_jobs(stale_after_minutes=None, include_pending=False)
+    _ensure_scheduler_started()
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
 
 
 @app.get("/health")
@@ -1388,14 +1428,14 @@ def dashboard(
             "label": "Online",
             "value": online_nodes,
             "tone": "success",
-            "meta": "Reachable during the latest sync",
+            "meta": "TCP reachable during the latest probe",
             "href": "/nodes",
         },
         {
-            "label": "Offline / Stale",
+            "label": "Offline",
             "value": stale_nodes,
             "tone": "danger" if stale_nodes else "neutral",
-            "meta": "Nodes that need attention",
+            "meta": "TCP unreachable during the latest probe",
             "href": "/nodes",
         },
         {
@@ -1441,9 +1481,9 @@ def dashboard(
         attention_items.append(
             {
                 "tone": "danger",
-                "title": "Offline or stale nodes",
+                "title": "Offline nodes",
                 "count": stale_nodes,
-                "description": "Reachability dropped for part of the fleet. Review affected nodes before pushing more changes.",
+                "description": "Transport reachability dropped for part of the fleet. Review affected radios before pushing more changes.",
                 "href": "/nodes",
                 "cta": "Review nodes",
             }

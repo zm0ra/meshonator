@@ -4,10 +4,11 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from meshonator.db.models import ManagedNodeModel, NodeEndpointModel
+from meshonator.db.models import ManagedNodeModel, NodeEndpointModel, ProviderEndpointModel
 from meshonator.domain.models import ManagedNode
+from meshonator.providers.utils.tcp_scan import tcp_probe
 from meshonator.providers.utils.json_safe import to_json_safe
 
 
@@ -115,12 +116,70 @@ class InventoryService:
             if node.last_seen is None:
                 continue
             delta = now - self._as_utc(node.last_seen)
-            is_reachable = delta.total_seconds() <= stale_minutes * 60
-            if node.reachable != is_reachable:
-                node.reachable = is_reachable
+            is_fresh = delta.total_seconds() <= stale_minutes * 60
+            raw_metadata = dict(node.raw_metadata) if isinstance(node.raw_metadata, dict) else {}
+            current_fresh = raw_metadata.get("fresh")
+            if current_fresh != is_fresh:
+                raw_metadata["fresh"] = is_fresh
+                node.raw_metadata = raw_metadata
                 count += 1
         self.db.commit()
         return count
+
+    def refresh_transport_reachability(self, timeout: float = 1.0) -> dict:
+        now = datetime.now(timezone.utc)
+        endpoint_rows = list(self.db.scalars(select(ProviderEndpointModel).order_by(ProviderEndpointModel.host.asc())).all())
+        endpoint_state: dict[str, bool] = {}
+        endpoints_online = 0
+        endpoints_offline = 0
+
+        for endpoint_row in endpoint_rows:
+            probe = tcp_probe(endpoint_row.host, endpoint_row.port, timeout=timeout)
+            is_open = bool(probe.get("is_open"))
+            endpoint_row.reachable = is_open
+            if is_open:
+                endpoint_row.last_seen = now
+                endpoints_online += 1
+            else:
+                endpoints_offline += 1
+            meta_json = dict(endpoint_row.meta_json) if isinstance(endpoint_row.meta_json, dict) else {}
+            meta_json.update(
+                {
+                    "last_transport_probe_at": now.isoformat(),
+                    "last_transport_probe": probe,
+                }
+            )
+            endpoint_row.meta_json = meta_json
+            endpoint_state[endpoint_row.endpoint] = is_open
+
+        node_rows = list(
+            self.db.scalars(select(ManagedNodeModel).options(selectinload(ManagedNodeModel.endpoints))).all()
+        )
+        nodes_online = 0
+        nodes_offline = 0
+        node_changes = 0
+        for node in node_rows:
+            is_reachable = any(endpoint_state.get(endpoint.endpoint, False) for endpoint in node.endpoints)
+            if node.reachable != is_reachable:
+                node.reachable = is_reachable
+                node_changes += 1
+            if is_reachable:
+                nodes_online += 1
+            else:
+                nodes_offline += 1
+
+        self.db.commit()
+        return {
+            "checked_at": now.isoformat(),
+            "timeout_s": timeout,
+            "endpoints_total": len(endpoint_rows),
+            "endpoints_online": endpoints_online,
+            "endpoints_offline": endpoints_offline,
+            "nodes_total": len(node_rows),
+            "nodes_online": nodes_online,
+            "nodes_offline": nodes_offline,
+            "node_changes": node_changes,
+        }
 
     def delete_node_endpoints(self, node_id: UUID) -> None:
         self.db.execute(delete(NodeEndpointModel).where(NodeEndpointModel.node_id == node_id))

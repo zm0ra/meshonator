@@ -25,7 +25,7 @@ Modular monolith boundaries:
 - `src/meshonator/providers` - provider contract + Meshtastic + MeshCore (experimental)
 - `src/meshonator/discovery` - host/IP/CIDR discovery
 - `src/meshonator/inventory` - local node inventory and cache
-- `src/meshonator/sync` - full/quick/scheduled sync
+- `src/meshonator/sync` - full/quick sync plus scheduled reachability probes
 - `src/meshonator/operations` - config patch, desired state, drift diff
 - `src/meshonator/groups` - manual and dynamic groups
 - `src/meshonator/jobs` - job lifecycle and status
@@ -202,6 +202,19 @@ curl -fsS http://localhost:8081/health
 ```
 
 Example response includes service and provider health status.
+
+## Scheduled fleet checks
+
+- `SCHEDULER_REACHABILITY_CRON` runs lightweight TCP probes against known endpoints to refresh online/offline state without opening a full Meshtastic session.
+- `SCHEDULER_REACHABILITY_TIMEOUT_S` controls the per-endpoint TCP probe timeout.
+- `SCHEDULER_SYNC_CRON` runs a heavier quick sync to refresh node inventory and mesh metadata.
+
+Default behavior:
+
+- reachability probe every 5 minutes
+- quick sync every hour
+
+This keeps the dashboard status fresh without repeatedly opening full radio sessions just to answer whether an endpoint is up.
 
 ## Build footer metadata
 

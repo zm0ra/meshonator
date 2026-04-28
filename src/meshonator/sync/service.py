@@ -73,6 +73,16 @@ class SyncService:
         )
         return out
 
+    def refresh_reachability(self, timeout: float) -> dict:
+        result = self.inventory.refresh_transport_reachability(timeout=timeout)
+        self.audit.log(
+            actor="scheduler",
+            source="scheduler",
+            action="sync.reachability",
+            metadata=result,
+        )
+        return result
+
     def sync_node(self, node_id: str | UUID, quick: bool = False) -> dict:
         node_pk = UUID(node_id) if isinstance(node_id, str) else node_id
         node = self.db.scalar(

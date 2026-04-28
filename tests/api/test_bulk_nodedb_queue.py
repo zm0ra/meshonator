@@ -112,3 +112,57 @@ def test_queue_group_nodedb_routing_favorites_job(client, db):
     assert job.job_type == "bulk_nodedb_mutation"
     assert set(job.payload["destination_node_ids"]) == {str(n1.id), str(n2.id)}
     assert set(job.payload["target_node_ids"]) == {"!r1", "!r2"}
+
+
+def test_refresh_fleet_nodedb_routing_favorites_queues_add_and_remove_jobs(client, db):
+    bootstrap_admin(db, "admin", "admin", "admin")
+    existing_job_ids = {str(job.id) for job in db.query(JobModel).all()}
+    source = ManagedNodeModel(
+        provider="meshtastic",
+        provider_node_id="!src-refresh",
+        short_name="SRC-R",
+        role="ROUTER",
+        reachable=True,
+        raw_metadata={
+            "nodesInMesh": {
+                "!a1": {"hopsAway": 0, "isFavorite": False, "user": {"id": "!a1", "role": "ROUTER"}},
+                "!a2": {"hopsAway": 0, "isFavorite": True, "user": {"id": "!a2", "role": "CLIENT_BASE"}},
+                "!stale": {"hopsAway": 1, "isFavorite": True, "user": {"id": "!stale", "role": "ROUTER"}},
+            }
+        },
+    )
+    target = ManagedNodeModel(
+        provider="meshtastic",
+        provider_node_id="!dst-refresh",
+        short_name="DST-R",
+        role="CLIENT",
+        reachable=True,
+        raw_metadata={"nodesInMesh": {}},
+    )
+    db.add(source)
+    db.add(target)
+    db.commit()
+
+    cookies = _login(client)
+    response = client.post(
+        "/ui/nodes/nodedb/routing-favorites/refresh",
+        data={
+            "allowed_roles_text": "ROUTER\nROUTER_LATE\nCLIENT_BASE",
+            "source_max_hops": "0",
+            "remove_unseen": "true",
+        },
+        cookies=cookies,
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (302, 303)
+    assert response.headers["location"].startswith("/nodes?message=")
+
+    jobs = [job for job in db.query(JobModel).all() if str(job.id) not in existing_job_ids]
+    assert len(jobs) == 2
+    payloads_by_action = {job.payload["action"]: job.payload for job in jobs}
+    assert set(payloads_by_action) == {"set_favorite", "remove_favorite"}
+    assert {"!a1", "!a2"}.issubset(set(payloads_by_action["set_favorite"]["target_node_ids"]))
+    assert payloads_by_action["remove_favorite"]["target_node_ids"] == ["!stale"]
+    queued_destinations = set(payloads_by_action["set_favorite"]["destination_node_ids"])
+    assert {str(source.id), str(target.id)}.issubset(queued_destinations)

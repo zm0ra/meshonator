@@ -943,6 +943,59 @@ def _collect_routing_favorite_targets(
     return sorted(target_ids)
 
 
+def _collect_current_routing_favorite_targets(
+    *,
+    source_nodes: list[ManagedNodeModel],
+    allowed_roles: set[str],
+) -> list[str]:
+    target_ids: set[str] = set()
+    for source in source_nodes:
+        raw_metadata = source.raw_metadata or {}
+        nodes_in_mesh = raw_metadata.get("nodesInMesh", {})
+        if not isinstance(nodes_in_mesh, dict):
+            continue
+        for node_id, payload in nodes_in_mesh.items():
+            if not isinstance(payload, dict) or payload.get("isFavorite") is not True:
+                continue
+            user = payload.get("user", {}) if isinstance(payload.get("user"), dict) else {}
+            role = str(user.get("role") or "").upper().strip()
+            if allowed_roles and role not in allowed_roles:
+                continue
+            resolved_id = user.get("id") or node_id
+            if isinstance(resolved_id, str) and resolved_id.strip():
+                target_ids.add(resolved_id.strip())
+    return sorted(target_ids)
+
+
+def _queue_bulk_nodedb_mutation_job(
+    *,
+    db: Session,
+    requested_by: str,
+    destination_node_ids: list[str],
+    target_node_ids: list[str],
+    action: str,
+    dry_run: bool,
+    extra_payload: dict[str, Any] | None = None,
+) -> JobModel:
+    payload = {
+        "destination_node_ids": destination_node_ids,
+        "target_node_ids": target_node_ids,
+        "action": action,
+        "exclude_self": True,
+        "dry_run": dry_run,
+    }
+    if extra_payload:
+        payload.update(extra_payload)
+    job = JobsService(db).create(
+        job_type="bulk_nodedb_mutation",
+        requested_by=requested_by,
+        source="ui",
+        payload=payload,
+    )
+    enqueue_bulk_nodedb_job(job.id, registry)
+    return job
+
+
 def _channels_to_patch(channels: list[Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in channels:
@@ -2055,25 +2108,105 @@ def ui_nodes_nodedb_routing_favorites(
         )
         if not target_node_ids:
             return RedirectResponse(url="/nodes?error=No+routing+targets+matched+criteria", status_code=303)
-        job = JobsService(db).create(
-            job_type="bulk_nodedb_mutation",
+        job = _queue_bulk_nodedb_mutation_job(
+            db=db,
             requested_by=user.username,
-            source="ui",
-            payload={
-                "destination_node_ids": [str(n.id) for n in all_nodes if n.id is not None],
-                "target_node_ids": target_node_ids,
-                "action": action,
-                "exclude_self": True,
-                "dry_run": dry_run,
-            },
+            destination_node_ids=[str(n.id) for n in all_nodes if n.id is not None],
+            target_node_ids=target_node_ids,
+            action=action,
+            dry_run=dry_run,
         )
-        enqueue_bulk_nodedb_job(job.id, registry)
         message = quote_plus(
             f"Queued bulk NodeDB {action} for {len(all_nodes)} nodes (targets: {len(target_node_ids)}). Job ID: {job.id}"
         )
         return RedirectResponse(url=f"/nodes?message={message}", status_code=303)
     except Exception as exc:
         error = quote_plus(f"Bulk NodeDB routing favorites failed: {exc}")
+        return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
+
+
+@app.post("/ui/nodes/nodedb/routing-favorites/refresh")
+def ui_nodes_nodedb_routing_favorites_refresh(
+    allowed_roles_text: str = Form("ROUTER\nROUTER_LATE\nCLIENT_BASE"),
+    source_max_hops: int = Form(0),
+    remove_unseen: bool = Form(False),
+    dry_run: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        all_nodes = InventoryService(db).list_nodes()
+        if not all_nodes:
+            return RedirectResponse(url="/nodes?error=No+managed+nodes+found", status_code=303)
+
+        allowed_roles = set(_normalize_roles(allowed_roles_text))
+        destination_node_ids = [str(node.id) for node in all_nodes if node.id is not None]
+        seen_target_ids = _collect_routing_favorite_targets(
+            db=db,
+            source_nodes=all_nodes,
+            allowed_roles=allowed_roles,
+            max_hops=source_max_hops,
+        )
+        current_favorite_ids = _collect_current_routing_favorite_targets(
+            source_nodes=all_nodes,
+            allowed_roles=allowed_roles,
+        )
+        stale_target_ids = sorted(set(current_favorite_ids) - set(seen_target_ids)) if remove_unseen else []
+
+        created_jobs: list[JobModel] = []
+        if seen_target_ids:
+            created_jobs.append(
+                _queue_bulk_nodedb_mutation_job(
+                    db=db,
+                    requested_by=user.username,
+                    destination_node_ids=destination_node_ids,
+                    target_node_ids=seen_target_ids,
+                    action="set_favorite",
+                    dry_run=dry_run,
+                    extra_payload={"refresh_mode": True, "source_max_hops": source_max_hops},
+                )
+            )
+        if stale_target_ids:
+            created_jobs.append(
+                _queue_bulk_nodedb_mutation_job(
+                    db=db,
+                    requested_by=user.username,
+                    destination_node_ids=destination_node_ids,
+                    target_node_ids=stale_target_ids,
+                    action="remove_favorite",
+                    dry_run=dry_run,
+                    extra_payload={"refresh_mode": True, "source_max_hops": source_max_hops},
+                )
+            )
+
+        if not created_jobs:
+            return RedirectResponse(
+                url="/nodes?error=No+0-hop+favorite+refresh+changes+detected",
+                status_code=303,
+            )
+
+        AuditService(db).log(
+            actor=user.username,
+            source="ui",
+            action="node.nodedb.favorite_refresh.queue",
+            metadata={
+                "source_max_hops": source_max_hops,
+                "allowed_roles": sorted(allowed_roles),
+                "remove_unseen": remove_unseen,
+                "seen_target_count": len(seen_target_ids),
+                "stale_target_count": len(stale_target_ids),
+                "dry_run": dry_run,
+                "job_ids": [str(job.id) for job in created_jobs],
+            },
+        )
+
+        message = f"Queued favorite refresh for {len(seen_target_ids)} current 0-hop targets"
+        if stale_target_ids:
+            message += f" and remove_favorite for {len(stale_target_ids)} stale targets"
+        message += ". Job IDs: " + ", ".join(str(job.id) for job in created_jobs)
+        return RedirectResponse(url=f"/nodes?message={quote_plus(message)}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Favorite refresh failed: {exc}")
         return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
 
 

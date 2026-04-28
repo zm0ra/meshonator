@@ -1354,18 +1354,102 @@ def ui_sync_run_get() -> RedirectResponse:
 def nodes_page(
     request: Request,
     provider: str | None = None,
+    q: str = "",
+    status: str = "all",
+    favorites: str = "all",
+    location: str = "all",
+    role: str = "",
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_session_user),
     ) -> HTMLResponse:
     svc = InventoryService(db)
-    nodes = svc.list_nodes(provider=provider)
+    all_nodes = svc.list_nodes(provider=provider)
+    query = q.strip().lower()
+    normalized_role = role.strip().upper()
+    nodes: list[ManagedNodeModel] = []
+    for node in all_nodes:
+        endpoint_hosts = [endpoint.host.lower() for endpoint in node.endpoints if endpoint.host]
+        haystack = [
+            str(node.provider or "").lower(),
+            str(node.provider_node_id or "").lower(),
+            str(node.short_name or "").lower(),
+            str(node.long_name or "").lower(),
+            str(node.hardware_model or "").lower(),
+        ]
+        if query and not any(query in value for value in haystack + endpoint_hosts):
+            continue
+        if status == "online" and not node.reachable:
+            continue
+        if status == "offline" and node.reachable:
+            continue
+        if favorites == "only" and not node.favorite:
+            continue
+        if favorites == "exclude" and node.favorite:
+            continue
+        has_location = node.latitude is not None and node.longitude is not None
+        if location == "mapped" and not has_location:
+            continue
+        if location == "missing" and has_location:
+            continue
+        if normalized_role and str(node.role or "").upper() != normalized_role:
+            continue
+        nodes.append(node)
+    selected_node_ids = [value for value in request.query_params.getlist("selected_node_ids") if value]
+    nodes_by_id = {str(node.id): node for node in all_nodes}
+    selected_nodes = [nodes_by_id[node_id] for node_id in selected_node_ids if node_id in nodes_by_id]
     return templates.TemplateResponse(
         request,
         "nodes.html",
         {
             "user": user,
             "nodes": nodes,
+            "all_nodes": all_nodes,
+            "selected_nodes": selected_nodes,
+            "selected_node_ids": selected_node_ids,
             "provider": provider,
+            "providers": sorted({node.provider for node in svc.list_nodes()}),
+            "roles": sorted({str(node.role).upper() for node in all_nodes if node.role}),
+            "filters": {
+                "q": q,
+                "status": status,
+                "favorites": favorites,
+                "location": location,
+                "role": role,
+            },
+            "counts": {
+                "online": len([node for node in nodes if node.reachable]),
+                "offline": len([node for node in nodes if not node.reachable]),
+                "mapped": len([node for node in nodes if node.latitude is not None and node.longitude is not None]),
+                "selected": len(selected_nodes),
+            },
+            "ui_message": request.query_params.get("message"),
+            "ui_error": request.query_params.get("error"),
+        },
+    )
+
+
+@app.get("/nodes/batch-configure", response_class=HTMLResponse)
+def nodes_batch_configure_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_session_user),
+) -> HTMLResponse:
+    svc = InventoryService(db)
+    all_nodes = svc.list_nodes()
+    nodes_by_id = {str(node.id): node for node in all_nodes}
+    selected_node_ids = [value for value in request.query_params.getlist("selected_node_ids") if value]
+    selected_nodes = [nodes_by_id[node_id] for node_id in selected_node_ids if node_id in nodes_by_id]
+    if not selected_nodes:
+        error = quote_plus("Select at least one node before opening batch configure")
+        return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "nodes_batch_configure.html",
+        {
+            "user": user,
+            "all_nodes": all_nodes,
+            "selected_nodes": selected_nodes,
+            "selected_node_ids": selected_node_ids,
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
         },
@@ -2292,6 +2376,9 @@ def groups_page(
         resolved = group_service.resolve_all_members(group)
         groups_view.append({"group": group, "assigned": assigned, "resolved": resolved})
     nodes = InventoryService(db).list_nodes()
+    nodes_by_id = {str(node.id): node for node in nodes}
+    selected_node_ids = [value for value in request.query_params.getlist("selected_node_ids") if value]
+    selected_nodes = [nodes_by_id[node_id] for node_id in selected_node_ids if node_id in nodes_by_id]
     return templates.TemplateResponse(
         request,
         "groups.html",
@@ -2299,6 +2386,8 @@ def groups_page(
             "user": user,
             "groups_view": groups_view,
             "nodes": nodes,
+            "selected_nodes": selected_nodes,
+            "selected_node_ids": selected_node_ids,
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
         },
@@ -2359,6 +2448,35 @@ def ui_group_assign_node(
         return RedirectResponse(url="/groups?message=Node+assigned", status_code=303)
     except Exception as exc:
         error = quote_plus(f"Assign failed: {exc}")
+        return RedirectResponse(url=f"/groups?error={error}", status_code=303)
+
+
+@app.post("/ui/groups/{group_id}/assign-selected")
+def ui_group_assign_selected(
+    group_id: UUID,
+    selected_node_ids: list[str] = Form(default=[]),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        node_ids = _parse_uuid_list(selected_node_ids)
+        if not node_ids:
+            return RedirectResponse(url="/groups?error=No+selected+nodes+to+assign", status_code=303)
+        assigned_count = GroupsService(db).assign_nodes(group_id=group_id, node_ids=node_ids)
+        AuditService(db).log(
+            actor=user.username,
+            source="ui",
+            action="group.assign_selected_nodes",
+            group_id=group_id,
+            metadata={
+                "assigned_count": assigned_count,
+                "selected_node_ids": [str(node_id) for node_id in node_ids],
+            },
+        )
+        message = quote_plus(f"Assigned {assigned_count} selected nodes to group")
+        return RedirectResponse(url=f"/groups?message={message}", status_code=303)
+    except Exception as exc:
+        error = quote_plus(f"Bulk assign failed: {exc}")
         return RedirectResponse(url=f"/groups?error={error}", status_code=303)
 
 
@@ -2535,6 +2653,16 @@ def jobs_page(
 ) -> HTMLResponse:
     jobs_service = JobsService(db)
     jobs = jobs_service.list_jobs()
+    query = request.query_params.get("q", "").strip().lower()
+    if query:
+        jobs = [
+            job for job in jobs
+            if query in str(job.id).lower()
+            or query in str(job.job_type).lower()
+            or query in str(job.status).lower()
+            or query in str(job.requested_by).lower()
+            or query in str(job.source).lower()
+        ]
     results = jobs_service.list_results(limit=600)
     results_by_job: dict[str, list] = {}
     for row in results:
@@ -2553,6 +2681,11 @@ def jobs_page(
             "results_by_job": results_by_job,
             "auto_refresh": auto_refresh,
             "refresh_toggle_url": refresh_toggle_url,
+            "job_counts": {
+                "running": len([job for job in jobs if job.status in {"pending", "running"}]),
+                "failed": len([job for job in jobs if job.status == "failed"]),
+                "success": len([job for job in jobs if job.status == "success"]),
+            },
         },
     )
 
@@ -2564,6 +2697,16 @@ def audit_page(
     user: CurrentUser = Depends(require_session_user),
 ) -> HTMLResponse:
     entries = AuditService(db).list_recent(limit=300)
+    query = request.query_params.get("q", "").strip().lower()
+    if query:
+        entries = [
+            entry for entry in entries
+            if query in str(entry.actor or "").lower()
+            or query in str(entry.source or "").lower()
+            or query in str(entry.action or "").lower()
+            or query in str(entry.provider or "").lower()
+            or query in str(entry.node_id or "").lower()
+        ]
     return templates.TemplateResponse(request, "audit.html", {"user": user, "entries": entries})
 
 

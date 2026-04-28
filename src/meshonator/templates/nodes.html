@@ -6,9 +6,9 @@
 
 <header class="page-hero page-hero-steel">
   <div>
-    <p class="eyebrow">Inventory workspace</p>
+    <p class="eyebrow">Inventory</p>
     <h1>Nodes</h1>
-    <p class="page-summary">This page still carries too many raw actions, but it now lives inside the same operational shell as the dashboard. The inventory table is treated as the primary surface and the heavy tools sit below it as secondary workflows.</p>
+    <p class="page-summary">The inventory table is now the primary workspace. Selection stays persistent inside the page, bulk actions live in one bar, and heavy tools move into secondary drawers instead of taking over the screen.</p>
   </div>
   <div class="hero-metrics">
     <article class="hero-metric">
@@ -16,111 +16,198 @@
       <strong>{{ nodes|length }}</strong>
     </article>
     <article class="hero-metric">
-      <span>Compare results</span>
-      <strong>{{ compare_results|length if compare_results else 0 }}</strong>
+      <span>Online</span>
+      <strong>{{ counts.online }}</strong>
+    </article>
+    <article class="hero-metric">
+      <span>Missing location</span>
+      <strong>{{ nodes|length - counts.mapped }}</strong>
+    </article>
+    <article class="hero-metric">
+      <span>Selected</span>
+      <strong>{{ counts.selected }}</strong>
     </article>
   </div>
 </header>
 
 <section class="panel-card">
-  <div class="section-header">
+  <div class="section-header compact-header">
     <div>
-      <p class="eyebrow">Inventory</p>
-      <h2>Fleet node table</h2>
-    </div>
-    <div class="button-row">
-      <button type="button" onclick="toggleAllNodeSelection(true)">Select all</button>
-      <button type="button" class="ghost-button-dark" onclick="toggleAllNodeSelection(false)">Clear</button>
+      <p class="eyebrow">Filter bar</p>
+      <h2>Find the slice you need before you act</h2>
     </div>
   </div>
-  <form method="post" action="/ui/nodes/favorites/all" class="inline-actions">
-    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-    <button type="submit">Queue Favorite=true For All Managed Nodes</button>
-  </form>
-  <form method="post" action="/ui/nodes/nodedb/routing-favorites" class="inline-actions">
-    <label>NodeDB action
-      <select name="action">
-        <option value="set_favorite">Set favorite node</option>
-        <option value="remove_favorite">Remove favorite node</option>
-        <option value="remove_node">Remove node from NodeDB</option>
+  <form method="get" action="/nodes" class="filter-bar">
+    <label>Search
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Name, provider ID, host, hardware" />
+    </label>
+    <label>Provider
+      <select name="provider">
+        <option value="">All providers</option>
+        {% for provider_name in providers %}
+        <option value="{{ provider_name }}" {% if provider == provider_name %}selected{% endif %}>{{ provider_name }}</option>
+        {% endfor %}
       </select>
     </label>
-    <label>Source max hops
-      <input type="number" name="source_max_hops" min="0" value="0" />
+    <label>Status
+      <select name="status">
+        <option value="all" {% if filters.status == 'all' %}selected{% endif %}>All</option>
+        <option value="online" {% if filters.status == 'online' %}selected{% endif %}>Online</option>
+        <option value="offline" {% if filters.status == 'offline' %}selected{% endif %}>Offline</option>
+      </select>
     </label>
-    <label>Allowed source/target roles
-      <input type="text" name="allowed_roles_text" value="ROUTER,ROUTER_LATE,CLIENT_BASE" />
+    <label>Pinned
+      <select name="favorites">
+        <option value="all" {% if filters.favorites == 'all' %}selected{% endif %}>All</option>
+        <option value="only" {% if filters.favorites == 'only' %}selected{% endif %}>Pinned only</option>
+        <option value="exclude" {% if filters.favorites == 'exclude' %}selected{% endif %}>Exclude pinned</option>
+      </select>
     </label>
-    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-    <button type="submit">Queue NodeDB Favorites For Fleet</button>
+    <label>Location
+      <select name="location">
+        <option value="all" {% if filters.location == 'all' %}selected{% endif %}>All</option>
+        <option value="mapped" {% if filters.location == 'mapped' %}selected{% endif %}>Mapped</option>
+        <option value="missing" {% if filters.location == 'missing' %}selected{% endif %}>Missing</option>
+      </select>
+    </label>
+    <label>Role
+      <select name="role">
+        <option value="">All roles</option>
+        {% for role_name in roles %}
+        <option value="{{ role_name }}" {% if filters.role|upper == role_name %}selected{% endif %}>{{ role_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="button-row filter-actions">
+      <button type="submit">Apply filters</button>
+      <a href="/nodes" class="ghost-link">Clear</a>
+    </div>
   </form>
-  <div class="table-wrap"><table class="data-table">
-    <tr>
-      <th>Select</th><th>Provider</th><th>Node ID</th><th>Name</th><th>IP</th><th>Firmware</th><th>Hardware</th><th>Role</th><th>Pinned</th><th>Location</th><th>Last Seen</th><th>Status</th>
-    </tr>
-    {% for n in nodes %}
-    {% set primary_ep = (n.endpoints | selectattr('is_primary') | list | first) %}
-    {% set fallback_ep = (n.endpoints | list | first) %}
-    <tr>
-      <td><input type="checkbox" form="batch-config-form" name="selected_node_ids" value="{{ n.id }}" class="node-selector" /></td>
-      <td>{{ n.provider }}</td>
-      <td>
-        <a href="/nodes/{{ n.id }}">{{ n.short_name or n.provider_node_id }}</a>
-        {% if n.short_name and n.provider_node_id %}
-        <div><small>{{ n.provider_node_id }}</small></div>
-        {% endif %}
-      </td>
-      <td>{{ n.short_name }} / {{ n.long_name }}</td>
-      <td>{{ (primary_ep or fallback_ep).host if (primary_ep or fallback_ep) else '-' }}</td>
-      <td>{{ n.firmware_version }}</td>
-      <td>{{ n.hardware_model }}</td>
-      <td>{{ n.role }}</td>
-      <td>{{ 'yes' if n.favorite else 'no' }}</td>
-      <td>
-        {% if n.latitude is not none and n.longitude is not none %}
-          {{ '%.5f'|format(n.latitude) }}, {{ '%.5f'|format(n.longitude) }}
-        {% else %}
-          -
-        {% endif %}
-      </td>
-      <td>{{ n.last_seen }}</td>
-      <td><span class="status-pill status-pill-{{ 'success' if n.reachable else 'danger' }}">{{ 'online' if n.reachable else 'offline' }}</span></td>
-    </tr>
-    {% endfor %}
-  </table></div>
 </section>
+
+<form id="node-selection-form" method="get" action="/nodes/batch-configure" class="selection-layout">
+  <section class="panel-card">
+    <div class="section-header">
+      <div>
+        <p class="eyebrow">Inventory table</p>
+        <h2>Fleet node table</h2>
+      </div>
+      <div class="button-row">
+        <button type="button" onclick="toggleAllNodeSelection(true)">Select visible</button>
+        <button type="button" class="ghost-button-dark" onclick="toggleAllNodeSelection(false)">Clear</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table class="data-table node-table">
+      <tr>
+        <th>Select</th><th>Node</th><th>Provider</th><th>Status</th><th>Role</th><th>Location</th><th>Last Seen</th><th>Actions</th>
+      </tr>
+      {% for n in nodes %}
+      {% set primary_ep = (n.endpoints | selectattr('is_primary') | list | first) %}
+      {% set fallback_ep = (n.endpoints | list | first) %}
+      {% set endpoint = primary_ep or fallback_ep %}
+      <tr data-node-id="{{ n.id }}" data-node-label="{{ n.provider }} :: {{ n.short_name or n.provider_node_id }}" data-node-provider="{{ n.provider }}" data-node-role="{{ n.role or '-' }}" data-node-status="{{ 'online' if n.reachable else 'offline' }}" data-node-location="{{ ('%.5f'|format(n.latitude) ~ ', ' ~ '%.5f'|format(n.longitude)) if n.latitude is not none and n.longitude is not none else '-' }}" data-node-last-seen="{{ n.last_seen }}">
+        <td><input type="checkbox" name="selected_node_ids" value="{{ n.id }}" class="node-selector" {% if (n.id|string) in selected_node_ids %}checked{% endif %} /></td>
+        <td>
+          <a href="/nodes/{{ n.id }}"><strong>{{ n.short_name or n.provider_node_id }}</strong></a>
+          <div class="node-meta-stack">
+            <span class="meta-chip">{{ n.provider_node_id }}</span>
+            {% if endpoint %}<span class="meta-chip">{{ endpoint.host }}</span>{% endif %}
+            {% if n.hardware_model %}<span class="meta-chip">{{ n.hardware_model }}</span>{% endif %}
+          </div>
+        </td>
+        <td>{{ n.provider }}</td>
+        <td><span class="status-pill status-pill-{{ 'success' if n.reachable else 'danger' }}">{{ 'online' if n.reachable else 'offline' }}</span></td>
+        <td>{{ n.role or '-' }}{% if n.favorite %}<div><span class="status-pill status-pill-accent">Pinned</span></div>{% endif %}</td>
+        <td>{% if n.latitude is not none and n.longitude is not none %}{{ '%.5f'|format(n.latitude) }}, {{ '%.5f'|format(n.longitude) }}{% else %}<span class="muted">Missing</span>{% endif %}</td>
+        <td>{{ n.last_seen }}</td>
+        <td><a href="/nodes/{{ n.id }}">Open node</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="muted">No nodes match the current filter set.</td></tr>
+      {% endfor %}
+    </table></div>
+  </section>
+
+  <section class="bulk-action-bar panel-card">
+    <div>
+      <p class="eyebrow">Bulk action bar</p>
+      <h2><span id="selected-node-count">0</span> selected</h2>
+      <p class="muted">Configure, compare, assign, or export from one stable selection.</p>
+    </div>
+    <div class="button-row">
+      <button type="submit">Configure selected</button>
+      <button type="submit" formaction="/groups" formmethod="get" class="ghost-button-dark">Assign group</button>
+      <button type="button" class="ghost-button-dark" id="open-compare-builder">Compare</button>
+      <button type="button" class="ghost-button-dark" id="export-selection-button">Export CSV</button>
+    </div>
+  </section>
+</form>
+
+<section class="panel-card" id="compare-builder-panel" hidden>
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Secondary tool</p>
+      <h2>Compare selected nodes</h2>
+    </div>
+  </div>
+  <p class="muted">Choose one source from the current selection. All remaining selected nodes become targets automatically.</p>
+  <form method="post" action="/ui/nodes/compare" class="stack" id="compare-form">
+    <label>Source node
+      <select name="source_node_id" id="compare-source-select" required>
+        <option value="">Select source node</option>
+      </select>
+    </label>
+    <div class="review-panel">
+      <p class="eyebrow">Targets</p>
+      <ul class="subtle-list" id="compare-target-preview">
+        <li class="muted">Select at least two nodes to compare.</li>
+      </ul>
+      <div id="compare-target-inputs"></div>
+    </div>
+    <label><input type="checkbox" name="ignore_location" value="true" checked /> Ignore location differences</label>
+    <label><input type="checkbox" name="use_alignment_profile" value="true" checked /> Use alignment compare profile</label>
+    <button type="submit" id="compare-submit-button" disabled>Compare selected nodes</button>
+  </form>
+</section>
+
 <section class="panel-card">
   <div class="section-header">
     <div>
-      <p class="eyebrow">Comparison</p>
-      <h2>Compare node configurations</h2>
+      <p class="eyebrow">Fleet utilities</p>
+      <h2>Global jobs that affect the whole inventory</h2>
     </div>
   </div>
-  <p class="muted">Compare source node configuration against selected target nodes. Location differences are ignored by default.</p>
-  <form method="post" action="/ui/nodes/compare" class="stack">
-    <label>Source node
-      <select name="source_node_id" required>
-        <option value="">Select source node</option>
-        {% for n in nodes %}
-        <option value="{{ n.id }}" {% if compare_source_id and compare_source_id == (n.id|string) %}selected{% endif %}>
-          {{ n.provider }} :: {{ n.short_name or n.provider_node_id }} ({{ n.provider_node_id }})
-        </option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>Target nodes (multi-select)
-      <select name="target_node_ids" multiple size="8" required>
-        {% for n in nodes %}
-        <option value="{{ n.id }}" {% if compare_target_ids and (n.id|string) in compare_target_ids %}selected{% endif %}>
-          {{ n.provider }} :: {{ n.short_name or n.provider_node_id }} ({{ n.provider_node_id }})
-        </option>
-        {% endfor %}
-      </select>
-    </label>
-    <label><input type="checkbox" name="ignore_location" value="true" {% if compare_ignore_location is not defined or compare_ignore_location %}checked{% endif %} /> Ignore location differences</label>
-    <label><input type="checkbox" name="use_alignment_profile" value="true" {% if compare_use_alignment_profile is not defined or compare_use_alignment_profile %}checked{% endif %} /> Use alignment compare profile</label>
-    <button type="submit">Compare Configuration</button>
-  </form>
+  <div class="grid two">
+    <form method="post" action="/ui/nodes/favorites/all" class="stack form-section">
+      <div>
+        <h3>Pin all managed nodes</h3>
+        <p class="muted">Queues a fleet-wide `favorite=true` patch for every managed node.</p>
+      </div>
+      <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+      <button type="submit">Queue fleet pin job</button>
+    </form>
+    <form method="post" action="/ui/nodes/nodedb/routing-favorites" class="stack form-section">
+      <div>
+        <h3>NodeDB routing favorites</h3>
+        <p class="muted">Mutate NodeDB favorite routing state across the fleet using role and hop filters.</p>
+      </div>
+      <label>NodeDB action
+        <select name="action">
+          <option value="set_favorite">Set favorite node</option>
+          <option value="remove_favorite">Remove favorite node</option>
+          <option value="remove_node">Remove node from NodeDB</option>
+        </select>
+      </label>
+      <label>Source max hops
+        <input type="number" name="source_max_hops" min="0" value="0" />
+      </label>
+      <label>Allowed source and target roles
+        <input type="text" name="allowed_roles_text" value="ROUTER,ROUTER_LATE,CLIENT_BASE" />
+      </label>
+      <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+      <button type="submit">Queue NodeDB fleet job</button>
+    </form>
+  </div>
 </section>
 
 {% if compare_results %}
@@ -136,7 +223,7 @@
     {% for row in compare_results %}
     <tr>
       <td><a href="/nodes/{{ row.target.id }}">{{ row.target.short_name or row.target.provider_node_id }}</a></td>
-      <td>{{ row.status }}</td>
+      <td><span class="status-pill status-pill-{{ 'danger' if row.status == 'different' else ('warning' if row.status == 'skipped' else 'success') }}">{{ row.status }}</span></td>
       <td>
         {% if row.sections %}
           {{ row.sections | join(', ') }}
@@ -151,7 +238,7 @@
       <td colspan="4">
         <details>
           <summary>Show differences for {{ row.target.short_name or row.target.provider_node_id }}</summary>
-          <table>
+          <table class="data-table data-table-compact">
             <tr><th>Path</th><th>Source</th><th>Target</th></tr>
             {% for d in row.diffs %}
             <tr>
@@ -184,332 +271,145 @@
   </form>
 </section>
 {% endif %}
-
-<section class="panel-card">
-  <div class="section-header">
-    <div>
-      <p class="eyebrow">Bulk actions</p>
-      <h2>Batch Configure Nodes</h2>
-    </div>
-  </div>
-  <p class="muted">Select nodes in the table above, then queue one shared configuration job.</p>
-  <p class="muted">Keep current leaves the existing node value untouched. Only populated fields and enabled clone options below will be applied.</p>
-  <form method="post" action="/ui/nodes/batch-configure" class="stack" id="batch-config-form">
-    <fieldset>
-      <legend>Clone from source node</legend>
-      <label>Source node
-        <select name="clone_source_node_id">
-          <option value="">None (manual patch only)</option>
-          {% for n in nodes %}
-          <option value="{{ n.id }}">{{ n.provider }} :: {{ n.short_name or n.provider_node_id }} ({{ n.provider_node_id }})</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label><input type="checkbox" name="clone_local_config" value="true" checked /> Clone local config (excluding security)</label>
-      <label><input type="checkbox" name="clone_module_config" value="true" checked /> Clone module config</label>
-      <label><input type="checkbox" name="clone_channels" value="true" checked /> Clone channels</label>
-      <label><input type="checkbox" name="clone_role" value="true" /> Clone role</label>
-      <label><input type="checkbox" name="clone_favorite" value="true" /> Clone pinned state</label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Manual Overrides</legend>
-      <label>Role override
-        <input type="text" name="role_override" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" />
-      </label>
-      <label>Pinned state
-        <select name="favorite_state">
-          <option value="keep">Keep current</option>
-          <option value="true">Pin</option>
-          <option value="false">Unpin</option>
-        </select>
-      </label>
-      <label>Local config patch JSON
-        <textarea name="local_config_patch_json" rows="4" placeholder='{"position":{"gpsUpdateInterval":120}}'></textarea>
-      </label>
-      <label>Module config patch JSON
-        <textarea name="module_config_patch_json" rows="4" placeholder='{"telemetry":{"deviceUpdateInterval":300}}'></textarea>
-      </label>
-      <label>Channels patch JSON
-        <textarea name="channels_patch_json" rows="4" placeholder='[{"index":0,"moduleSettings":{"positionPrecision":13}}]'></textarea>
-      </label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Fleet Baseline Overrides</legend>
-      <p class="muted">Use these fields to enforce common channel, telemetry, MQTT and rsyslog settings across selected nodes.</p>
-
-      <label>Primary channel position precision (index 0)
-        <input type="number" min="0" max="32" name="primary_position_precision" placeholder="13" />
-      </label>
-      <label>Primary channel uplink
-        <select name="primary_uplink_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>Primary channel downlink
-        <select name="primary_downlink_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-
-      <label>Telemetry device update interval (seconds)
-        <input type="number" min="0" name="telemetry_device_update_interval" placeholder="300" />
-      </label>
-      <label>Telemetry environment update interval (seconds)
-        <input type="number" min="0" name="telemetry_environment_update_interval" placeholder="300" />
-      </label>
-      <label>Telemetry air quality update interval (seconds)
-        <input type="number" min="0" name="telemetry_air_quality_interval" placeholder="300" />
-      </label>
-      <label>Telemetry power update interval (seconds)
-        <input type="number" min="0" name="telemetry_power_update_interval" placeholder="300" />
-      </label>
-      <label>Telemetry health update interval (seconds)
-        <input type="number" min="0" name="telemetry_health_update_interval" placeholder="300" />
-      </label>
-      <label>Device telemetry enabled
-        <select name="telemetry_device_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>Environment telemetry enabled
-        <select name="telemetry_environment_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>Air quality telemetry enabled
-        <select name="telemetry_air_quality_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>Power telemetry enabled
-        <select name="telemetry_power_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>Health telemetry enabled
-        <select name="telemetry_health_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-
-      <label>MQTT address
-        <input type="text" name="mqtt_address" placeholder="172.30.250.10" />
-      </label>
-      <label>MQTT root
-        <input type="text" name="mqtt_root" placeholder="msh/EU_868" />
-      </label>
-      <label>MQTT username
-        <input type="text" name="mqtt_username" placeholder="mt" />
-      </label>
-      <label>MQTT password
-        <input type="text" name="mqtt_password" placeholder="mt" />
-      </label>
-      <label>MQTT enabled
-        <select name="mqtt_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>MQTT encryption enabled
-        <select name="mqtt_encryption_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>MQTT JSON enabled
-        <select name="mqtt_json_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>MQTT map reporting enabled
-        <select name="mqtt_map_reporting_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>MQTT proxy to client enabled
-        <select name="mqtt_proxy_to_client_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-      <label>MQTT TLS enabled
-        <select name="mqtt_tls_enabled">
-          <option value="keep" selected>Keep current</option>
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </label>
-
-      <label>Rsyslog server
-        <input type="text" name="network_rsyslog_server" placeholder="172.30.103.2" />
-      </label>
-      <label>Enabled protocols
-        <input type="number" min="0" name="network_enabled_protocols" placeholder="1" />
-      </label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Location Spread</legend>
-      <p class="muted">Set a common center and spread nodes around it. Example: 4 nodes with step 50 m.</p>
-      <label>Center latitude
-        <input type="number" step="any" name="center_latitude" placeholder="53.4511616" />
-      </label>
-      <label>Center longitude
-        <input type="number" step="any" name="center_longitude" placeholder="14.5489920" />
-      </label>
-      <label>Center altitude (optional)
-        <input type="number" step="any" name="center_altitude" placeholder="30" />
-      </label>
-      <label>Spread step (meters)
-        <input type="number" min="0" step="1" name="spread_step_m" value="50" />
-      </label>
-    </fieldset>
-
-    <div class="stack">
-      <div class="section-header compact-header">
-        <div>
-          <p class="eyebrow">Preflight</p>
-          <h3>Batch change summary</h3>
-        </div>
-      </div>
-      <p class="muted" id="batch-selection-count">Selected nodes: 0</p>
-      <ul class="subtle-list" id="batch-preview-list" aria-live="polite">
-        <li class="muted">Select nodes and choose changes to build a preview before queueing.</li>
-      </ul>
-    </div>
-
-    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-    <label><input type="checkbox" name="confirm_batch_changes" value="true" id="batch-confirm-checkbox" /> I reviewed the selected node count and change summary above.</label>
-    <button type="submit" id="batch-submit-button" disabled>Queue Batch Node Changes</button>
-  </form>
-</section>
 <script>
 function toggleAllNodeSelection(state) {
   document.querySelectorAll(".node-selector").forEach(function (el) {
     el.checked = state;
   });
-  refreshBatchPreview();
+  refreshSelectionState();
 }
 
-function refreshBatchPreview() {
-  const selectedNodes = Array.from(document.querySelectorAll('.node-selector:checked'));
-  const previewList = document.getElementById('batch-preview-list');
-  const selectionCount = document.getElementById('batch-selection-count');
-  const submitButton = document.getElementById('batch-submit-button');
-  const confirmCheckbox = document.getElementById('batch-confirm-checkbox');
-  const form = document.getElementById('batch-config-form');
-  if (!previewList || !selectionCount || !submitButton || !confirmCheckbox || !form) {
+function getSelectedRows() {
+  return Array.from(document.querySelectorAll('.node-selector:checked')).map(function (checkbox) {
+    return checkbox.closest('tr');
+  }).filter(Boolean);
+}
+
+function refreshSelectionState() {
+  const selectedRows = getSelectedRows();
+  const selectedCount = document.getElementById('selected-node-count');
+  const compareButton = document.getElementById('open-compare-builder');
+  const exportButton = document.getElementById('export-selection-button');
+  if (selectedCount) {
+    selectedCount.textContent = String(selectedRows.length);
+  }
+  if (compareButton) {
+    compareButton.disabled = selectedRows.length < 2;
+  }
+  if (exportButton) {
+    exportButton.disabled = selectedRows.length === 0;
+  }
+  syncCompareBuilder(selectedRows);
+}
+
+function syncCompareBuilder(selectedRows) {
+  const sourceSelect = document.getElementById('compare-source-select');
+  const preview = document.getElementById('compare-target-preview');
+  const hiddenInputs = document.getElementById('compare-target-inputs');
+  const submitButton = document.getElementById('compare-submit-button');
+  if (!sourceSelect || !preview || !hiddenInputs || !submitButton) {
     return;
   }
 
-  const items = [];
-  const valueOf = function (name) {
-    const field = form.querySelector('[name="' + name + '"]');
-    if (!field) {
-      return '';
-    }
-    if (field.type === 'checkbox') {
-      return field.checked ? 'true' : '';
-    }
-    return (field.value || '').trim();
-  };
-
-  const cloneSource = valueOf('clone_source_node_id');
-  if (cloneSource) {
-    const cloneParts = [];
-    [['clone_local_config', 'local config'], ['clone_module_config', 'module config'], ['clone_channels', 'channels'], ['clone_role', 'role'], ['clone_favorite', 'pinned state']].forEach(function (entry) {
-      if (valueOf(entry[0])) {
-        cloneParts.push(entry[1]);
-      }
-    });
-    items.push('Clone from source node: ' + (cloneParts.length ? cloneParts.join(', ') : 'no sections selected'));
+  const previousValue = sourceSelect.value;
+  sourceSelect.innerHTML = '<option value="">Select source node</option>';
+  selectedRows.forEach(function (row) {
+    const option = document.createElement('option');
+    option.value = row.dataset.nodeId || '';
+    option.textContent = row.dataset.nodeLabel || row.dataset.nodeId || 'Node';
+    sourceSelect.appendChild(option);
+  });
+  if (Array.from(sourceSelect.options).some(function (option) { return option.value === previousValue; })) {
+    sourceSelect.value = previousValue;
   }
 
-  if (valueOf('role_override')) {
-    items.push('Set role override to ' + valueOf('role_override').toUpperCase());
-  }
-  if (valueOf('favorite_state') && valueOf('favorite_state') !== 'keep') {
-    items.push(valueOf('favorite_state') === 'true' ? 'Pin selected nodes in Meshonator' : 'Unpin selected nodes in Meshonator');
-  }
-  if (valueOf('local_config_patch_json')) {
-    items.push('Apply local config JSON patch');
-  }
-  if (valueOf('module_config_patch_json')) {
-    items.push('Apply module config JSON patch');
-  }
-  if (valueOf('channels_patch_json')) {
-    items.push('Apply channels JSON patch');
-  }
-
-  const baselineFields = [
-    'primary_position_precision', 'primary_uplink_enabled', 'primary_downlink_enabled',
-    'telemetry_device_update_interval', 'telemetry_environment_update_interval', 'telemetry_air_quality_interval',
-    'telemetry_power_update_interval', 'telemetry_health_update_interval', 'telemetry_device_enabled',
-    'telemetry_environment_enabled', 'telemetry_air_quality_enabled', 'telemetry_power_enabled',
-    'telemetry_health_enabled', 'mqtt_address', 'mqtt_username', 'mqtt_password', 'mqtt_root', 'mqtt_enabled',
-    'mqtt_encryption_enabled', 'mqtt_json_enabled', 'mqtt_map_reporting_enabled', 'mqtt_proxy_to_client_enabled',
-    'mqtt_tls_enabled', 'network_rsyslog_server', 'network_enabled_protocols'
-  ];
-  if (baselineFields.some(function (name) { return valueOf(name) && valueOf(name) !== 'keep'; })) {
-    items.push('Apply fleet baseline overrides');
-  }
-
-  if (valueOf('center_latitude') && valueOf('center_longitude')) {
-    items.push('Apply location spread around ' + valueOf('center_latitude') + ', ' + valueOf('center_longitude'));
-  }
-  if (valueOf('dry_run')) {
-    items.push('Queue as dry run');
-  }
-
-  selectionCount.textContent = 'Selected nodes: ' + selectedNodes.length;
-  previewList.innerHTML = '';
-  if (items.length === 0) {
-    const item = document.createElement('li');
-    item.className = 'muted';
-    item.textContent = 'No configuration changes are selected yet.';
-    previewList.appendChild(item);
+  hiddenInputs.innerHTML = '';
+  preview.innerHTML = '';
+  const sourceId = sourceSelect.value;
+  const targets = selectedRows.filter(function (row) {
+    return (row.dataset.nodeId || '') !== sourceId;
+  });
+  if (targets.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'muted';
+    empty.textContent = selectedRows.length < 2 ? 'Select at least two nodes to compare.' : 'Choose a source node to generate targets.';
+    preview.appendChild(empty);
   } else {
-    items.forEach(function (text) {
+    targets.forEach(function (row) {
       const item = document.createElement('li');
-      item.textContent = text;
-      previewList.appendChild(item);
+      item.textContent = row.dataset.nodeLabel || row.dataset.nodeId || 'Node';
+      preview.appendChild(item);
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'target_node_ids';
+      input.value = row.dataset.nodeId || '';
+      hiddenInputs.appendChild(input);
     });
   }
+  submitButton.disabled = !(sourceId && targets.length > 0);
+}
 
-  submitButton.disabled = selectedNodes.length === 0 || !confirmCheckbox.checked;
+function exportSelectedRows() {
+  const selectedNodes = Array.from(document.querySelectorAll('.node-selector:checked'));
+  if (!selectedNodes.length) {
+    return;
+  }
+
+  const header = ['node_id', 'label', 'provider', 'role', 'status', 'location', 'last_seen'];
+  const rows = selectedNodes.map(function (checkbox) {
+    const row = checkbox.closest('tr');
+    return [
+      row.dataset.nodeId || '',
+      row.dataset.nodeLabel || '',
+      row.dataset.nodeProvider || '',
+      row.dataset.nodeRole || '',
+      row.dataset.nodeStatus || '',
+      row.dataset.nodeLocation || '',
+      row.dataset.nodeLastSeen || ''
+    ].map(function (value) {
+      return '"' + String(value).replaceAll('"', '""') + '"';
+    }).join(',');
+  });
+  const csv = [header.join(','), rows.join('\n')].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'meshonator-nodes-selection.csv';
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 document.querySelectorAll('.node-selector').forEach(function (el) {
-  el.addEventListener('change', refreshBatchPreview);
+  el.addEventListener('change', refreshSelectionState);
 });
-document.querySelectorAll('#batch-config-form input, #batch-config-form select, #batch-config-form textarea').forEach(function (el) {
-  el.addEventListener('input', refreshBatchPreview);
-  el.addEventListener('change', refreshBatchPreview);
+const compareSourceSelect = document.getElementById('compare-source-select');
+if (compareSourceSelect) {
+  compareSourceSelect.addEventListener('change', function () {
+    syncCompareBuilder(getSelectedRows());
+  });
+}
+const openCompareButton = document.getElementById('open-compare-builder');
+if (openCompareButton) {
+  openCompareButton.addEventListener('click', function () {
+    const panel = document.getElementById('compare-builder-panel');
+    if (!panel) {
+      return;
+    }
+    panel.hidden = false;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+const exportButton = document.getElementById('export-selection-button');
+if (exportButton) {
+  exportButton.addEventListener('click', exportSelectedRows);
+}
+document.querySelectorAll('#compare-form input, #compare-form select').forEach(function (el) {
+  el.addEventListener('change', function () {
+    syncCompareBuilder(getSelectedRows());
+  });
 });
-refreshBatchPreview();
+refreshSelectionState();
 </script>
 </section>
 {% endblock %}

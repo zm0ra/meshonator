@@ -1,4 +1,5 @@
 from meshonator.discovery.service import DiscoveryService
+from meshonator.db.models import ProviderEndpointModel
 from meshonator.inventory.service import InventoryService
 from meshonator.providers.base import ProviderConnection
 from meshonator.providers.registry import ProviderRegistry
@@ -36,7 +37,10 @@ class FakeProvider:
 def test_discovery_stores_provider_endpoints(db):
     registry = ProviderRegistry()
     registry._providers["meshtastic"] = FakeProvider()
+    nodes_before = len(InventoryService(db).list_nodes())
     out = DiscoveryService(db, registry).scan(provider_name="meshtastic", hosts=["10.1.1.1"], source="test")
     assert len(out) == 1
     assert out[0].endpoint.startswith("tcp://")
-    assert InventoryService(db).list_nodes() == []
+    endpoint = db.query(ProviderEndpointModel).filter(ProviderEndpointModel.endpoint == out[0].endpoint).one()
+    assert endpoint.host == "10.1.1.1"
+    assert len(InventoryService(db).list_nodes()) == nodes_before

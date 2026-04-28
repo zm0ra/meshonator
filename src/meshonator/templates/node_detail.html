@@ -7,7 +7,7 @@
   <div>
     <p class="eyebrow">Node workspace</p>
     <h1>{{ node.short_name or node.provider_node_id }}</h1>
-    <p class="page-summary">Inspect one device cleanly, review identity and location, then make targeted changes without losing the rest of the application context.</p>
+    <p class="page-summary">This page is split by operator intent: identity and location first, targeted changes second, expert payloads only when explicitly expanded.</p>
   </div>
   <div class="hero-metrics">
     <article class="hero-metric">
@@ -24,6 +24,7 @@
     </article>
   </div>
 </header>
+
 <section class="workspace-columns">
   <article class="panel-card">
     <div class="section-header compact-header">
@@ -39,7 +40,7 @@
     <p><b>Pinned:</b> {{ node.favorite }}</p>
     <p><b>Firmware/Hardware:</b> {{ node.firmware_version }} / {{ node.hardware_model }}</p>
     <p><b>Reachable:</b> {{ node.reachable }}</p>
-    <h3>Endpoints (TCP)</h3>
+    <h3>Endpoints</h3>
     <ul class="subtle-list">
       {% for ep in node.endpoints %}<li>{{ ep.endpoint }} ({{ ep.source }})</li>{% endfor %}
     </ul>
@@ -51,180 +52,198 @@
         <h2>Preview and pick coordinates</h2>
       </div>
     </div>
-    <p class="muted">Click map to set latitude/longitude in the form below.</p>
+    <p class="muted">Click the map to set latitude and longitude in the form below.</p>
     <div id="previewMap" class="map-stage map-stage-small"></div>
-    <script>
-      const map = L.map('previewMap').setView([{{ node.latitude or 53.43 }}, {{ node.longitude or 14.55 }}], 10);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-      let pickMarker = null;
-      {% if node.latitude and node.longitude %}
-      pickMarker = L.marker([{{ node.latitude }}, {{ node.longitude }}]).addTo(map).bindPopup('{{ node.long_name or node.provider_node_id }}');
-      {% endif %}
-      map.on('click', function(e) {
-        const lat = Number(e.latlng.lat.toFixed(7));
-        const lon = Number(e.latlng.lng.toFixed(7));
-        const latInput = document.querySelector('input[name="latitude"]');
-        const lonInput = document.querySelector('input[name="longitude"]');
-        if (latInput) latInput.value = lat;
-        if (lonInput) lonInput.value = lon;
-        if (pickMarker) {
-          pickMarker.setLatLng([lat, lon]);
-        } else {
-          pickMarker = L.marker([lat, lon]).addTo(map);
-        }
-      });
-    </script>
   </article>
 </section>
+
 <section class="panel-card">
   <div class="section-header">
     <div>
       <p class="eyebrow">Node changes</p>
-      <h2>Configure node</h2>
+      <h2>Targeted changes</h2>
     </div>
   </div>
-  <form method="post" action="/ui/nodes/{{ node.id }}/configure" class="grid two">
-    <label>Short name
-      <input type="text" name="short_name" value="{{ node.short_name or '' }}" />
-    </label>
-    <label>Long name
-      <input type="text" name="long_name" value="{{ node.long_name or '' }}" />
-    </label>
-    <label>Role
-      <input type="text" name="role" value="{{ node.role or '' }}" />
-    </label>
-    <label>Favorite
-      <select name="favorite_state">
-        <option value="keep">Keep current</option>
-        <option value="true">Pin in Meshonator</option>
-        <option value="false">Unpin in Meshonator</option>
-      </select>
-    </label>
-    <label>Latitude
-      <input type="text" name="latitude" value="{{ node.latitude or '' }}" />
-    </label>
-    <label>Longitude
-      <input type="text" name="longitude" value="{{ node.longitude or '' }}" />
-    </label>
-    <label>Altitude
-      <input type="text" name="altitude" value="{{ node.altitude or '' }}" />
-    </label>
-    <label>Dry run
-      <input type="checkbox" name="dry_run" value="true" />
-    </label>
-    <label>Position broadcast interval (sec)
-      <input type="number" min="0" name="position_broadcast_secs" placeholder="900" />
-    </label>
-    <label>Smart position broadcast
-      <select name="position_broadcast_smart_enabled">
-        <option value="keep">Keep current</option>
-        <option value="true">Enable</option>
-        <option value="false">Disable</option>
-      </select>
-    </label>
-    <label>GPS update interval (sec)
-      <input type="number" min="0" name="gps_update_interval" placeholder="120" />
-    </label>
-    <label>GPS enabled
-      <select name="gps_enabled">
-        <option value="keep">Keep current</option>
-        <option value="true">Enable</option>
-        <option value="false">Disable</option>
-      </select>
-    </label>
-    <label>Fixed position
-      <select name="fixed_position">
-        <option value="keep">Keep current</option>
-        <option value="true">Enable fixed position</option>
-        <option value="false">Disable fixed position</option>
-      </select>
-    </label>
-    <label>Position flags
-      <input type="number" min="0" name="position_flags" placeholder="811" />
-    </label>
-    <label>Smart minimum distance (m)
-      <input type="number" min="0" name="broadcast_smart_min_distance" placeholder="100" />
-    </label>
-    <label>Smart minimum interval (sec)
-      <input type="number" min="0" name="broadcast_smart_min_interval_secs" placeholder="30" />
-    </label>
-    <label>Device role
-      <input type="text" name="device_role" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" />
-    </label>
-    <label>LoRa hop limit
-      <input type="number" min="0" name="lora_hop_limit" placeholder="7" />
-    </label>
-    <label>LoRa TX power
-      <input type="number" min="0" name="lora_tx_power" placeholder="27" />
-    </label>
-    <label>Primary channel position precision
-      <input type="number" min="0" max="32" name="primary_channel_position_precision" placeholder="13" />
-    </label>
-    <label>Telemetry device interval (sec)
-      <input type="number" min="0" name="telemetry_device_update_interval" placeholder="300" />
-    </label>
-    <label>Telemetry device enabled
-      <select name="telemetry_device_enabled">
-        <option value="keep">Keep current</option>
-        <option value="true">Enable</option>
-        <option value="false">Disable</option>
-      </select>
-    </label>
-    <label>Telemetry environment interval (sec)
-      <input type="number" min="0" name="telemetry_environment_update_interval" placeholder="300" />
-    </label>
-    <label>Telemetry environment enabled
-      <select name="telemetry_environment_enabled">
-        <option value="keep">Keep current</option>
-        <option value="true">Enable</option>
-        <option value="false">Disable</option>
-      </select>
-    </label>
-    <label>Telemetry power interval (sec)
-      <input type="number" min="0" name="telemetry_power_update_interval" placeholder="300" />
-    </label>
-    <label>Telemetry power enabled
-      <select name="telemetry_power_enabled">
-        <option value="keep">Keep current</option>
-        <option value="true">Enable</option>
-        <option value="false">Disable</option>
-      </select>
-    </label>
-    <label>Telemetry health interval (sec)
-      <input type="number" min="0" name="telemetry_health_update_interval" placeholder="300" />
-    </label>
-    <label>Telemetry health enabled
-      <select name="telemetry_health_enabled">
-        <option value="keep">Keep current</option>
-        <option value="true">Enable</option>
-        <option value="false">Disable</option>
-      </select>
-    </label>
-    <label>Local config patch (JSON object)
-      <textarea name="local_config_patch_json" rows="6" placeholder='{"position":{"positionBroadcastSecs":300}}'></textarea>
-    </label>
-    <label>Module config patch (JSON object)
-      <textarea name="module_config_patch_json" rows="6" placeholder='{"mqtt":{"enabled":false}}'></textarea>
-    </label>
-    <label>Channels patch (JSON array)
-      <textarea name="channels_patch_json" rows="6" placeholder='[{"index":0,"settings":{"name":"mesh"}}]'></textarea>
-    </label>
-    <details style="grid-column: 1 / -1;">
-      <summary>Advanced / Expert JSON input</summary>
-      <p class="muted">Paste a reviewed JSON object or array only when the structured controls are insufficient. Sensitive values are intentionally not prefilled here.</p>
-      <label>Full localConfig (JSON object)
-        <textarea name="full_local_config_json" rows="10" placeholder='{"position":{"positionBroadcastSecs":300}}'></textarea>
-      </label>
-      <label>Full moduleConfig (JSON object)
-        <textarea name="full_module_config_json" rows="10" placeholder='{"mqtt":{"enabled":false}}'></textarea>
-      </label>
-      <label>Full channels (JSON array)
-        <textarea name="full_channels_json" rows="10" placeholder='[{"index":0,"settings":{"name":"mesh"}}]'></textarea>
-      </label>
+  <form method="post" action="/ui/nodes/{{ node.id }}/configure" class="page-shell">
+    <section class="form-section">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Identity and location</p>
+          <h3>Safe edits for the operator surface</h3>
+        </div>
+      </div>
+      <div class="grid two">
+        <label>Short name
+          <input type="text" name="short_name" value="{{ node.short_name or '' }}" />
+        </label>
+        <label>Long name
+          <input type="text" name="long_name" value="{{ node.long_name or '' }}" />
+        </label>
+        <label>Role
+          <input type="text" name="role" value="{{ node.role or '' }}" />
+        </label>
+        <label>Favorite
+          <select name="favorite_state">
+            <option value="">No change</option>
+            <option value="true">Pin in Meshonator</option>
+            <option value="false">Unpin in Meshonator</option>
+          </select>
+        </label>
+        <label>Latitude
+          <input type="text" name="latitude" value="{{ node.latitude or '' }}" />
+        </label>
+        <label>Longitude
+          <input type="text" name="longitude" value="{{ node.longitude or '' }}" />
+        </label>
+        <label>Altitude
+          <input type="text" name="altitude" value="{{ node.altitude or '' }}" />
+        </label>
+        <label>Dry run
+          <input type="checkbox" name="dry_run" value="true" />
+        </label>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Position and radio</p>
+          <h3>Physical posture and routing</h3>
+        </div>
+      </div>
+      <div class="grid two">
+        <label>Position broadcast interval (sec)
+          <input type="number" min="0" name="position_broadcast_secs" placeholder="900" />
+        </label>
+        <label>Smart position broadcast
+          <select name="position_broadcast_smart_enabled">
+            <option value="">No change</option>
+            <option value="true">Enable</option>
+            <option value="false">Disable</option>
+          </select>
+        </label>
+        <label>GPS update interval (sec)
+          <input type="number" min="0" name="gps_update_interval" placeholder="120" />
+        </label>
+        <label>GPS enabled
+          <select name="gps_enabled">
+            <option value="">No change</option>
+            <option value="true">Enable</option>
+            <option value="false">Disable</option>
+          </select>
+        </label>
+        <label>Fixed position
+          <select name="fixed_position">
+            <option value="">No change</option>
+            <option value="true">Enable fixed position</option>
+            <option value="false">Disable fixed position</option>
+          </select>
+        </label>
+        <label>Position flags
+          <input type="number" min="0" name="position_flags" placeholder="811" />
+        </label>
+        <label>Smart minimum distance (m)
+          <input type="number" min="0" name="broadcast_smart_min_distance" placeholder="100" />
+        </label>
+        <label>Smart minimum interval (sec)
+          <input type="number" min="0" name="broadcast_smart_min_interval_secs" placeholder="30" />
+        </label>
+        <label>Device role
+          <input type="text" name="device_role" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" />
+        </label>
+        <label>LoRa hop limit
+          <input type="number" min="0" name="lora_hop_limit" placeholder="7" />
+        </label>
+        <label>LoRa TX power
+          <input type="number" min="0" name="lora_tx_power" placeholder="27" />
+        </label>
+        <label>Primary channel position precision
+          <input type="number" min="0" max="32" name="primary_channel_position_precision" placeholder="13" />
+        </label>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Telemetry</p>
+          <h3>Measurement cadence and enablement</h3>
+        </div>
+      </div>
+      <div class="grid two">
+        <label>Telemetry device interval (sec)
+          <input type="number" min="0" name="telemetry_device_update_interval" placeholder="300" />
+        </label>
+        <label>Telemetry device enabled
+          <select name="telemetry_device_enabled">
+            <option value="">No change</option>
+            <option value="true">Enable</option>
+            <option value="false">Disable</option>
+          </select>
+        </label>
+        <label>Telemetry environment interval (sec)
+          <input type="number" min="0" name="telemetry_environment_update_interval" placeholder="300" />
+        </label>
+        <label>Telemetry environment enabled
+          <select name="telemetry_environment_enabled">
+            <option value="">No change</option>
+            <option value="true">Enable</option>
+            <option value="false">Disable</option>
+          </select>
+        </label>
+        <label>Telemetry power interval (sec)
+          <input type="number" min="0" name="telemetry_power_update_interval" placeholder="300" />
+        </label>
+        <label>Telemetry power enabled
+          <select name="telemetry_power_enabled">
+            <option value="">No change</option>
+            <option value="true">Enable</option>
+            <option value="false">Disable</option>
+          </select>
+        </label>
+        <label>Telemetry health interval (sec)
+          <input type="number" min="0" name="telemetry_health_update_interval" placeholder="300" />
+        </label>
+        <label>Telemetry health enabled
+          <select name="telemetry_health_enabled">
+            <option value="">No change</option>
+            <option value="true">Enable</option>
+            <option value="false">Disable</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <details class="form-section">
+      <summary>Advanced JSON input</summary>
+      <p class="muted">Paste reviewed JSON only when the targeted controls cannot express the required patch. Sensitive values are intentionally not prefilled.</p>
+      <div class="grid two mt-1">
+        <label>Local config patch (JSON object)
+          <textarea name="local_config_patch_json" rows="6" placeholder='{"position":{"positionBroadcastSecs":300}}'></textarea>
+        </label>
+        <label>Module config patch (JSON object)
+          <textarea name="module_config_patch_json" rows="6" placeholder='{"mqtt":{"enabled":false}}'></textarea>
+        </label>
+        <label>Channels patch (JSON array)
+          <textarea name="channels_patch_json" rows="6" placeholder='[{"index":0,"settings":{"name":"mesh"}}]'></textarea>
+        </label>
+      </div>
+      <div class="grid two mt-1">
+        <label>Full localConfig (JSON object)
+          <textarea name="full_local_config_json" rows="10" placeholder='{"position":{"positionBroadcastSecs":300}}'></textarea>
+        </label>
+        <label>Full moduleConfig (JSON object)
+          <textarea name="full_module_config_json" rows="10" placeholder='{"mqtt":{"enabled":false}}'></textarea>
+        </label>
+        <label>Full channels (JSON array)
+          <textarea name="full_channels_json" rows="10" placeholder='[{"index":0,"settings":{"name":"mesh"}}]'></textarea>
+        </label>
+      </div>
     </details>
-    <div><button type="submit">Apply Node Changes</button></div>
+    <div><button type="submit">Apply node changes</button></div>
   </form>
 </section>
+
 {% if structured_forms.supported %}
 <section class="panel-card">
   <div class="section-header">
@@ -233,107 +252,87 @@
       <h2>Structured Config Editor</h2>
     </div>
   </div>
-  <p class="muted">Enum fields are rendered as dropdown lists. This editor covers full Local/Module/Channel configuration tree.</p>
-  <form method="post" action="/ui/nodes/{{ node.id }}/configure-structured" class="stack">
-    <h3>Local Config</h3>
-    <div class="table-wrap"><table class="data-table">
-      <tr><th>Path</th><th>Value</th></tr>
-      {% for row in structured_forms.local_rows %}
-      <tr>
-        <td>{{ row.label }}</td>
-        <td>
-          <input type="hidden" name="structured_scope" value="local" />
-          <input type="hidden" name="structured_path" value="{{ row.path }}" />
-          <input type="hidden" name="structured_kind" value="{{ row.kind }}" />
-          {% if row.kind == "enum" %}
-          <select name="structured_value">
-            {% for option in row.options %}
-            <option value="{{ option }}" {% if option == row.value %}selected{% endif %}>{{ option }}</option>
-            {% endfor %}
-          </select>
-          {% elif row.kind == "bool" %}
-          <select name="structured_value">
-            <option value="true" {% if row.value %}selected{% endif %}>true</option>
-            <option value="false" {% if row.value is not sameas true %}selected{% endif %}>false</option>
-          </select>
-          {% elif row.kind == "json" %}
-          <textarea name="structured_value" rows="2">{{ row.value }}</textarea>
-          {% else %}
-          <input type="text" name="structured_value" value="{{ row.value if row.value is not none else '' }}" />
-          {% endif %}
-        </td>
-      </tr>
+  <p class="muted">Enum fields are rendered as dropdown lists. This editor covers the full Local, Module, and Channel configuration tree, but stays secondary to the targeted operator controls above.</p>
+  <details>
+    <summary>Open structured config editor</summary>
+    <form method="post" action="/ui/nodes/{{ node.id }}/configure-structured" class="stack mt-1">
+      <h3>Local Config</h3>
+      <div class="table-wrap"><table class="data-table"><tr><th>Path</th><th>Value</th></tr>
+        {% for row in structured_forms.local_rows %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>
+            <input type="hidden" name="structured_scope" value="local" />
+            <input type="hidden" name="structured_path" value="{{ row.path }}" />
+            <input type="hidden" name="structured_kind" value="{{ row.kind }}" />
+            {% if row.kind == "enum" %}
+            <select name="structured_value">{% for option in row.options %}<option value="{{ option }}" {% if option == row.value %}selected{% endif %}>{{ option }}</option>{% endfor %}</select>
+            {% elif row.kind == "bool" %}
+            <select name="structured_value"><option value="true" {% if row.value %}selected{% endif %}>true</option><option value="false" {% if row.value is not sameas true %}selected{% endif %}>false</option></select>
+            {% elif row.kind == "json" %}
+            <textarea name="structured_value" rows="2">{{ row.value }}</textarea>
+            {% else %}
+            <input type="text" name="structured_value" value="{{ row.value if row.value is not none else '' }}" />
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table></div>
+      <h3>Module Config</h3>
+      <div class="table-wrap"><table class="data-table"><tr><th>Path</th><th>Value</th></tr>
+        {% for row in structured_forms.module_rows %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>
+            <input type="hidden" name="structured_scope" value="module" />
+            <input type="hidden" name="structured_path" value="{{ row.path }}" />
+            <input type="hidden" name="structured_kind" value="{{ row.kind }}" />
+            {% if row.kind == "enum" %}
+            <select name="structured_value">{% for option in row.options %}<option value="{{ option }}" {% if option == row.value %}selected{% endif %}>{{ option }}</option>{% endfor %}</select>
+            {% elif row.kind == "bool" %}
+            <select name="structured_value"><option value="true" {% if row.value %}selected{% endif %}>true</option><option value="false" {% if row.value is not sameas true %}selected{% endif %}>false</option></select>
+            {% elif row.kind == "json" %}
+            <textarea name="structured_value" rows="2">{{ row.value }}</textarea>
+            {% else %}
+            <input type="text" name="structured_value" value="{{ row.value if row.value is not none else '' }}" />
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table></div>
+      {% for channel in structured_forms.channel_forms %}
+      <h3>Channel {{ channel.index }}</h3>
+      <div class="table-wrap"><table class="data-table"><tr><th>Path</th><th>Value</th></tr>
+        {% for row in channel.rows %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td>
+            <input type="hidden" name="structured_scope" value="channel:{{ channel.index }}" />
+            <input type="hidden" name="structured_path" value="{{ row.path }}" />
+            <input type="hidden" name="structured_kind" value="{{ row.kind }}" />
+            {% if row.kind == "enum" %}
+            <select name="structured_value">{% for option in row.options %}<option value="{{ option }}" {% if option == row.value %}selected{% endif %}>{{ option }}</option>{% endfor %}</select>
+            {% elif row.kind == "bool" %}
+            <select name="structured_value"><option value="true" {% if row.value %}selected{% endif %}>true</option><option value="false" {% if row.value is not sameas true %}selected{% endif %}>false</option></select>
+            {% elif row.kind == "json" %}
+            <textarea name="structured_value" rows="2">{{ row.value }}</textarea>
+            {% else %}
+            <input type="text" name="structured_value" value="{{ row.value if row.value is not none else '' }}" />
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table></div>
       {% endfor %}
-    </table></div>
-    <h3>Module Config</h3>
-    <div class="table-wrap"><table class="data-table">
-      <tr><th>Path</th><th>Value</th></tr>
-      {% for row in structured_forms.module_rows %}
-      <tr>
-        <td>{{ row.label }}</td>
-        <td>
-          <input type="hidden" name="structured_scope" value="module" />
-          <input type="hidden" name="structured_path" value="{{ row.path }}" />
-          <input type="hidden" name="structured_kind" value="{{ row.kind }}" />
-          {% if row.kind == "enum" %}
-          <select name="structured_value">
-            {% for option in row.options %}
-            <option value="{{ option }}" {% if option == row.value %}selected{% endif %}>{{ option }}</option>
-            {% endfor %}
-          </select>
-          {% elif row.kind == "bool" %}
-          <select name="structured_value">
-            <option value="true" {% if row.value %}selected{% endif %}>true</option>
-            <option value="false" {% if row.value is not sameas true %}selected{% endif %}>false</option>
-          </select>
-          {% elif row.kind == "json" %}
-          <textarea name="structured_value" rows="2">{{ row.value }}</textarea>
-          {% else %}
-          <input type="text" name="structured_value" value="{{ row.value if row.value is not none else '' }}" />
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </table></div>
-    {% for channel in structured_forms.channel_forms %}
-    <h3>Channel {{ channel.index }}</h3>
-    <div class="table-wrap"><table class="data-table">
-      <tr><th>Path</th><th>Value</th></tr>
-      {% for row in channel.rows %}
-      <tr>
-        <td>{{ row.label }}</td>
-        <td>
-          <input type="hidden" name="structured_scope" value="channel:{{ channel.index }}" />
-          <input type="hidden" name="structured_path" value="{{ row.path }}" />
-          <input type="hidden" name="structured_kind" value="{{ row.kind }}" />
-          {% if row.kind == "enum" %}
-          <select name="structured_value">
-            {% for option in row.options %}
-            <option value="{{ option }}" {% if option == row.value %}selected{% endif %}>{{ option }}</option>
-            {% endfor %}
-          </select>
-          {% elif row.kind == "bool" %}
-          <select name="structured_value">
-            <option value="true" {% if row.value %}selected{% endif %}>true</option>
-            <option value="false" {% if row.value is not sameas true %}selected{% endif %}>false</option>
-          </select>
-          {% elif row.kind == "json" %}
-          <textarea name="structured_value" rows="2">{{ row.value }}</textarea>
-          {% else %}
-          <input type="text" name="structured_value" value="{{ row.value if row.value is not none else '' }}" />
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </table></div>
-    {% endfor %}
-    <label>Dry run
-      <input type="checkbox" name="dry_run" value="true" />
-    </label>
-    <button type="submit">Apply Structured Configuration</button>
-  </form>
+      <label>Dry run
+        <input type="checkbox" name="dry_run" value="true" />
+      </label>
+      <button type="submit">Apply structured configuration</button>
+    </form>
+  </details>
 </section>
 {% endif %}
+
 <section class="panel-card">
   <div class="section-header">
     <div>
@@ -342,58 +341,60 @@
     </div>
   </div>
   <p class="muted">Candidates are read from this node's current mesh database (`nodesInMesh`) and filtered by hop distance.</p>
-  <form method="post" action="/ui/nodes/{{ node.id }}/zero-hop/import" class="grid two">
-    <label>Target group name
-      <input type="text" name="group_name" placeholder="zero-hop-{{ node.short_name or node.provider_node_id }}" />
-    </label>
-    <label>Max hops
-      <input type="number" name="max_hops" min="0" value="0" />
-    </label>
-    <label>Allowed roles (one per line)
-      <textarea name="allowed_roles_text" rows="4">ROUTER
+  <div class="grid two">
+    <form method="post" action="/ui/nodes/{{ node.id }}/zero-hop/import" class="grid two form-section">
+      <label>Target group name
+        <input type="text" name="group_name" placeholder="zero-hop-{{ node.short_name or node.provider_node_id }}" />
+      </label>
+      <label>Max hops
+        <input type="number" name="max_hops" min="0" value="0" />
+      </label>
+      <label>Allowed roles (one per line)
+        <textarea name="allowed_roles_text" rows="4">ROUTER
 ROUTER_LATE
 CLIENT_BASE</textarea>
-    </label>
-    <div><button type="submit">Import Matching Managed Nodes To Group</button></div>
-  </form>
-  <form method="post" action="/ui/nodes/{{ node.id }}/zero-hop/favorites" class="grid two" style="margin-top: 1rem">
-    <label>Max hops
-      <input type="number" name="max_hops" min="0" value="0" />
-    </label>
-    <label>Dry run
-      <input type="checkbox" name="dry_run" value="true" />
-    </label>
-    <label>Allowed roles (one per line)
-      <textarea name="allowed_roles_text" rows="4">ROUTER
+      </label>
+      <div><button type="submit">Import matching managed nodes to group</button></div>
+    </form>
+    <form method="post" action="/ui/nodes/{{ node.id }}/zero-hop/favorites" class="grid two form-section">
+      <label>Max hops
+        <input type="number" name="max_hops" min="0" value="0" />
+      </label>
+      <label>Dry run
+        <input type="checkbox" name="dry_run" value="true" />
+      </label>
+      <label>Allowed roles (one per line)
+        <textarea name="allowed_roles_text" rows="4">ROUTER
 ROUTER_LATE
 CLIENT_BASE</textarea>
-    </label>
-    <div><button type="submit">Queue Favorite=true For Matching Managed Nodes</button></div>
-  </form>
-  <form method="post" action="/ui/nodes/{{ node.id }}/zero-hop/nodedb" class="grid two" style="margin-top: 1rem">
-    <label>NodeDB action
-      <select name="action">
-        <option value="set_favorite">Set favorite node</option>
-        <option value="remove_favorite">Remove favorite node</option>
-        <option value="remove_node">Remove node from NodeDB</option>
-      </select>
-    </label>
-    <label>Max hops
-      <input type="number" name="max_hops" min="0" value="0" />
-    </label>
-    <label>Dry run
-      <input type="checkbox" name="dry_run" value="true" />
-    </label>
-    <label>Allowed roles (one per line)
-      <textarea name="allowed_roles_text" rows="4">ROUTER
+      </label>
+      <div><button type="submit">Queue favorite=true for matching managed nodes</button></div>
+    </form>
+    <form method="post" action="/ui/nodes/{{ node.id }}/zero-hop/nodedb" class="grid two form-section panel-card-span-2">
+      <label>NodeDB action
+        <select name="action">
+          <option value="set_favorite">Set favorite node</option>
+          <option value="remove_favorite">Remove favorite node</option>
+          <option value="remove_node">Remove node from NodeDB</option>
+        </select>
+      </label>
+      <label>Max hops
+        <input type="number" name="max_hops" min="0" value="0" />
+      </label>
+      <label>Dry run
+        <input type="checkbox" name="dry_run" value="true" />
+      </label>
+      <label>Allowed roles (one per line)
+        <textarea name="allowed_roles_text" rows="4">ROUTER
 ROUTER_LATE
 CLIENT_BASE</textarea>
-    </label>
-    <label style="grid-column: 1 / -1;">Explicit target node IDs (optional, one per line)
-      <textarea name="selected_candidate_ids_text" rows="4" placeholder="!a1f9eab4&#10;!53047302"></textarea>
-    </label>
-    <div><button type="submit">Queue NodeDB Action On This Node</button></div>
-  </form>
+      </label>
+      <label style="grid-column: 1 / -1;">Explicit target node IDs (optional, one per line)
+        <textarea name="selected_candidate_ids_text" rows="4" placeholder="!a1f9eab4&#10;!53047302"></textarea>
+      </label>
+      <div><button type="submit">Queue NodeDB action on this node</button></div>
+    </form>
+  </div>
   <div class="table-wrap"><table class="data-table">
     <tr><th>ID</th><th>Name</th><th>Role</th><th>HW</th><th>Hops</th><th>SNR</th><th>Last Heard</th><th>Managed</th><th>Pinned</th></tr>
     {% for n in zero_hop_candidates %}
@@ -405,20 +406,8 @@ CLIENT_BASE</textarea>
       <td>{{ n.hops_away }}</td>
       <td>{{ n.snr }}</td>
       <td>{{ n.last_heard }}</td>
-      <td>
-        {% if n.managed_node_id %}
-          <a href="/nodes/{{ n.managed_node_id }}">{{ n.managed_short_name or n.id }}</a>
-        {% else %}
-          no
-        {% endif %}
-      </td>
-      <td>
-        {% if n.managed_favorite is none %}
-          -
-        {% else %}
-          {{ "yes" if n.managed_favorite else "no" }}
-        {% endif %}
-      </td>
+      <td>{% if n.managed_node_id %}<a href="/nodes/{{ n.managed_node_id }}">{{ n.managed_short_name or n.id }}</a>{% else %}no{% endif %}</td>
+      <td>{% if n.managed_favorite is none %}-{% else %}{{ "yes" if n.managed_favorite else "no" }}{% endif %}</td>
     </tr>
     {% endfor %}
     {% if not zero_hop_candidates %}
@@ -426,46 +415,69 @@ CLIENT_BASE</textarea>
     {% endif %}
   </table></div>
 </section>
+
 <section class="workspace-columns">
-<section class="panel-card">
-  <div class="section-header compact-header">
-    <div>
-      <p class="eyebrow">Snapshot</p>
-      <h2>Node Info Snapshot</h2>
+  <section class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Snapshot</p>
+        <h2>Node Info Snapshot</h2>
+      </div>
     </div>
-  </div>
-  <p><b>Owner:</b> {{ node.raw_metadata.get('owner', {}).get('longName') }} ({{ node.raw_metadata.get('owner', {}).get('shortName') }})</p>
-  <p><b>My Node Num:</b> {{ node.raw_metadata.get('myInfo', {}).get('myNodeNum') }}</p>
-  <p><b>Firmware:</b> {{ node.raw_metadata.get('metadata', {}).get('firmwareVersion') }}</p>
-  <p><b>Hardware:</b> {{ node.raw_metadata.get('metadata', {}).get('hwModel') }}</p>
-  <p><b>Role:</b> {{ node.raw_metadata.get('metadata', {}).get('role') }}</p>
-  <p><b>Known mesh nodes:</b> {{ node.raw_metadata.get('nodesInMesh', {})|length }}</p>
-  <p><b>Primary channel URL:</b> Hidden in operator view</p>
-</section>
-<section class="panel-card">
-  <div class="section-header compact-header">
-    <div>
-      <p class="eyebrow">Expert payload</p>
-      <h2>Redacted Provider Payload</h2>
+    <p><b>Owner:</b> {{ node.raw_metadata.get('owner', {}).get('longName') }} ({{ node.raw_metadata.get('owner', {}).get('shortName') }})</p>
+    <p><b>My Node Num:</b> {{ node.raw_metadata.get('myInfo', {}).get('myNodeNum') }}</p>
+    <p><b>Firmware:</b> {{ node.raw_metadata.get('metadata', {}).get('firmwareVersion') }}</p>
+    <p><b>Hardware:</b> {{ node.raw_metadata.get('metadata', {}).get('hwModel') }}</p>
+    <p><b>Role:</b> {{ node.raw_metadata.get('metadata', {}).get('role') }}</p>
+    <p><b>Known mesh nodes:</b> {{ node.raw_metadata.get('nodesInMesh', {})|length }}</p>
+    <p><b>Primary channel URL:</b> Hidden in operator view</p>
+  </section>
+  <section class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Expert payload</p>
+        <h2>Redacted Provider Payload</h2>
+      </div>
     </div>
-  </div>
-  <p class="muted">Sensitive fields are removed from the normal operator surface. Expand only when you need a redacted provider snapshot for troubleshooting.</p>
-  <details>
-    <summary>Open redacted expert payload</summary>
-    <pre>{{ redacted_raw_metadata | tojson(indent=2) }}</pre>
-  </details>
-</section>
-<section class="panel-card panel-card-span-2">
-  <div class="section-header compact-header">
-    <div>
-      <p class="eyebrow">Traceability</p>
-      <h2>Audit History</h2>
+    <p class="muted">Sensitive fields are removed from the normal operator surface. Expand only when you need a redacted provider snapshot for troubleshooting.</p>
+    <details>
+      <summary>Open redacted expert payload</summary>
+      <pre>{{ redacted_raw_metadata | tojson(indent=2) }}</pre>
+    </details>
+  </section>
+  <section class="panel-card panel-card-span-2">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Traceability</p>
+        <h2>Audit History</h2>
+      </div>
     </div>
-  </div>
-  <div class="table-wrap"><table class="data-table"><tr><th>Time</th><th>Action</th><th>Actor</th><th>Source</th></tr>
-    {% for e in audits %}<tr><td>{{ e.created_at }}</td><td>{{ e.action }}</td><td>{{ e.actor }}</td><td>{{ e.source }}</td></tr>{% endfor %}
-  </table></div>
+    <div class="table-wrap"><table class="data-table"><tr><th>Time</th><th>Action</th><th>Actor</th><th>Source</th></tr>
+      {% for e in audits %}<tr><td>{{ e.created_at }}</td><td>{{ e.action }}</td><td>{{ e.actor }}</td><td>{{ e.source }}</td></tr>{% endfor %}
+    </table></div>
+  </section>
 </section>
-</section>
+
+<script>
+const map = L.map('previewMap').setView([{{ node.latitude or 53.43 }}, {{ node.longitude or 14.55 }}], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+let pickMarker = null;
+{% if node.latitude and node.longitude %}
+pickMarker = L.marker([{{ node.latitude }}, {{ node.longitude }}]).addTo(map).bindPopup('{{ node.long_name or node.provider_node_id }}');
+{% endif %}
+map.on('click', function(e) {
+  const lat = Number(e.latlng.lat.toFixed(7));
+  const lon = Number(e.latlng.lng.toFixed(7));
+  const latInput = document.querySelector('input[name="latitude"]');
+  const lonInput = document.querySelector('input[name="longitude"]');
+  if (latInput) latInput.value = lat;
+  if (lonInput) lonInput.value = lon;
+  if (pickMarker) {
+    pickMarker.setLatLng([lat, lon]);
+  } else {
+    pickMarker = L.marker([lat, lon]).addTo(map);
+  }
+});
+</script>
 </section>
 {% endblock %}

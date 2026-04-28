@@ -6,9 +6,9 @@
 
   <header class="page-hero page-hero-steel">
     <div>
-      <p class="eyebrow">Fleet command</p>
-      <h1>Mesh operations console</h1>
-      <p class="page-summary">Run the fleet from one tactical surface. {{ attention_summary }}</p>
+      <p class="eyebrow">Overview</p>
+      <h1>Fleet overview</h1>
+      <p class="page-summary">The dashboard is now read-only by design. It should answer what is healthy, what is degraded, and where the next operator decision belongs. {{ attention_summary }}</p>
       <div class="atlas-legend operator-legend">
         <span class="status-pill status-pill-{{ worker_status.state }}">{{ worker_status.label }}</span>
         <span class="meta-chip">Last sync {{ latest_sync_at }}</span>
@@ -17,82 +17,32 @@
       </div>
     </div>
     <div class="hero-metrics">
-      <article class="hero-metric">
-        <span>Visible nodes</span>
-        <strong>{{ metrics[0].value }}</strong>
+      {% for metric in metrics[:4] %}
+      <article class="hero-metric metric-card metric-card-{{ metric.tone }}">
+        <span>{{ metric.label }}</span>
+        <strong>{{ metric.value }}</strong>
       </article>
-      <article class="hero-metric">
-        <span>Healthy mesh</span>
-        <strong>{{ metrics[1].value }}</strong>
-      </article>
-      <article class="hero-metric">
-        <span>Needs review</span>
-        <strong>{{ attention_items|length }}</strong>
-      </article>
-      <article class="hero-metric">
-        <span>Providers online</span>
-        <strong>{{ fleet_health.provider_count }}</strong>
-      </article>
+      {% endfor %}
     </div>
   </header>
+
+  <section class="metric-grid">
+    {% for metric in metrics %}
+    <a href="{{ metric.href }}" class="panel-card metric-tile metric-tile-{{ metric.tone }}">
+      <p class="eyebrow">{{ metric.label }}</p>
+      <strong class="metric-tile-value">{{ metric.value }}</strong>
+      <p class="muted">{{ metric.meta }}</p>
+    </a>
+    {% endfor %}
+  </section>
 
   <section class="workspace-columns workspace-columns-wide">
     <div class="side-stack">
       <article class="panel-card">
         <div class="section-header compact-header">
           <div>
-            <p class="eyebrow">Immediate action</p>
-            <h2>Run operations now</h2>
-          </div>
-        </div>
-        <div class="grid two">
-          <form method="post" action="/ui/sync/run" class="stack">
-            <div>
-              <h3>Sync fleet now</h3>
-              <p class="muted">Refresh inventory and reachability before configuration or triage.</p>
-            </div>
-            <label class="compact-toggle"><input type="checkbox" name="quick" value="true" /> Quick sync only</label>
-            <button type="submit">Run Sync</button>
-          </form>
-          <form method="post" action="/ui/discovery/scan" class="stack">
-            <div>
-              <h3>Launch discovery sweep</h3>
-              <p class="muted">Run discovery from the same command surface as the rest of the application.</p>
-            </div>
-            <label>Provider
-              <select name="provider">
-                {% for provider in providers %}
-                <option value="{{ provider }}">{{ provider }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label>Hosts
-              <textarea name="hosts_text" rows="2" placeholder="10.10.0.15&#10;node.example.local"></textarea>
-            </label>
-            <details class="command-details">
-              <summary>Advanced discovery fields</summary>
-              <div class="stack mt-1">
-                <label>CIDR ranges
-                  <textarea name="cidrs_text" rows="2" placeholder="10.10.0.0/24"></textarea>
-                </label>
-                <label>Manual endpoints
-                  <textarea name="endpoints_text" rows="2" placeholder="tcp://10.10.0.20:4403"></textarea>
-                </label>
-                <label>Port override
-                  <input type="number" name="port" min="1" max="65535" placeholder="4403" />
-                </label>
-              </div>
-            </details>
-            <button type="submit">Run Discovery</button>
-          </form>
-        </div>
-      </article>
-
-      <article class="panel-card">
-        <div class="section-header compact-header">
-          <div>
-            <p class="eyebrow">Triage</p>
-            <h2>Attention lanes</h2>
+            <p class="eyebrow">Attention lanes</p>
+            <h2>What needs a decision next</h2>
           </div>
           <a href="/nodes">Open nodes</a>
         </div>
@@ -116,7 +66,7 @@
         <div class="section-header compact-header">
           <div>
             <p class="eyebrow">Recent changes</p>
-            <h2>Latest field notes</h2>
+            <h2>Latest operator notes</h2>
           </div>
           <a href="/audit">View all</a>
         </div>
@@ -143,6 +93,33 @@
       <article class="panel-card">
         <div class="section-header compact-header">
           <div>
+            <p class="eyebrow">Operations map</p>
+            <h2>Go to the right workspace</h2>
+          </div>
+        </div>
+        <div class="navigation-grid">
+          <a href="/nodes" class="command-link">
+            <strong>Nodes</strong>
+            <span>Selection, rollout, and per-node drilldown</span>
+          </a>
+          <a href="/jobs" class="command-link">
+            <strong>Jobs</strong>
+            <span>Queue state, failures, and execution evidence</span>
+          </a>
+          <a href="/map" class="command-link">
+            <strong>Map</strong>
+            <span>Coverage and missing coordinates</span>
+          </a>
+          <a href="/settings" class="command-link">
+            <strong>Settings</strong>
+            <span>Integrations, providers, and defaults</span>
+          </a>
+        </div>
+      </article>
+
+      <article class="panel-card">
+        <div class="section-header compact-header">
+          <div>
             <p class="eyebrow">Execution status</p>
             <h2>System state</h2>
           </div>
@@ -152,17 +129,21 @@
         <div class="subtle-list">
           {% if latest_sync_job %}
           <div>
-            <div class="timeline-title-row"><strong>Latest sync</strong><span class="status-pill status-pill-neutral">{{ latest_sync_job.status }}</span></div>
-            <p class="muted">{{ latest_sync_job.source }}</p>
+            <div class="timeline-title-row">
+              <strong>Latest sync</strong>
+              <span class="status-pill status-pill-{{ 'success' if latest_sync_job.status == 'success' else ('danger' if latest_sync_job.status == 'failed' else 'warning') }}">{{ latest_sync_job.status }}</span>
+            </div>
+            <p class="muted">{{ latest_sync_job.source }} by {{ latest_sync_job.requested_by }}</p>
           </div>
           {% endif %}
           {% if latest_discovery_job %}
           <div>
-            <div class="timeline-title-row"><strong>Latest discovery</strong><span class="status-pill status-pill-neutral">{{ latest_discovery_job.status }}</span></div>
+            <div class="timeline-title-row">
+              <strong>Latest discovery</strong>
+              <span class="status-pill status-pill-{{ 'success' if latest_discovery_job.status == 'success' else ('danger' if latest_discovery_job.status == 'failed' else 'warning') }}">{{ latest_discovery_job.status }}</span>
+            </div>
+            {% if latest_discovery_progress %}<p class="muted">{{ latest_discovery_progress.message }}</p>{% endif %}
           </div>
-          {% endif %}
-          {% if latest_discovery_progress %}
-          <div><p class="muted">{{ latest_discovery_progress.message }}</p></div>
           {% endif %}
         </div>
       </article>
@@ -178,11 +159,13 @@
         <div class="subtle-list">
           {% for provider in providers_health %}
           <div>
-            <div class="timeline-title-row">
-              <strong>{{ provider.provider }}</strong>
-              <span class="status-pill status-pill-{{ 'success' if provider.status == 'ok' else 'warning' }}">{{ provider.status }}</span>
+            <div>
+              <div class="timeline-title-row">
+                <strong>{{ provider.provider }}</strong>
+                <span class="status-pill status-pill-{{ 'success' if provider.status == 'ok' else 'warning' }}">{{ provider.status }}</span>
+              </div>
+              <p class="muted">{{ provider.details if provider.details else 'No extra provider details reported.' }}</p>
             </div>
-            <p class="muted">{{ provider.details if provider.details else 'No extra provider details reported.' }}</p>
           </div>
           {% else %}
           <p class="muted">No provider diagnostics reported.</p>
@@ -203,7 +186,7 @@
           <a href="/jobs" class="timeline-item operator-timeline-item">
             <div>
               <div class="timeline-title-row">
-                <strong>{{ job.job_type }}</strong>
+                <strong>{{ job_type_label(job.job_type) }}</strong>
                 <span class="status-pill status-pill-{{ 'success' if job.status == 'success' else ('danger' if job.status == 'failed' else 'warning') }}">{{ job.status }}</span>
               </div>
               <p class="muted">{{ job.requested_by }} via {{ job.source }}</p>
@@ -214,25 +197,6 @@
           <p class="muted">No recent jobs recorded.</p>
           {% endfor %}
         </div>
-      </article>
-
-      <article class="panel-card">
-        <div class="section-header compact-header">
-          <div>
-            <p class="eyebrow">Coverage lanes</p>
-            <h2>Fleet distribution</h2>
-          </div>
-          <a href="/map">Open map</a>
-        </div>
-        <ul class="subtle-list">
-          {% for item in provider_summary %}
-          <li>
-            <div class="timeline-title-row"><strong>{{ item[0] }}</strong><span>{{ item[1] }} nodes</span></div>
-          </li>
-          {% else %}
-          <li class="muted">No provider distribution data available.</li>
-          {% endfor %}
-        </ul>
       </article>
     </div>
   </section>

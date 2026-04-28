@@ -11,31 +11,110 @@
 </head>
 <body class="app-body">
   {% set path = request.url.path if request is defined else '/' %}
-  <header class="topbar">
-    <div class="topbar-inner">
-    <div class="brand-block">
-      <div class="brand">Meshonator</div>
-      <div class="brand-subtitle">Fleet operations for Meshtastic and MeshCore</div>
+  {% set nav_items = [
+    {'href': '/', 'label': 'Dashboard', 'active': path == '/', 'icon': 'dashboard'},
+    {'href': '/nodes', 'label': 'Nodes', 'active': path.startswith('/nodes'), 'icon': 'nodes'},
+    {'href': '/map', 'label': 'Map', 'active': path.startswith('/map'), 'icon': 'map'},
+    {'href': '/groups', 'label': 'Groups', 'active': path.startswith('/groups'), 'icon': 'groups'},
+    {'href': '/jobs', 'label': 'Jobs', 'active': path.startswith('/jobs'), 'icon': 'jobs'},
+    {'href': '/audit', 'label': 'Audit', 'active': path.startswith('/audit'), 'icon': 'audit'},
+    {'href': '/settings', 'label': 'Settings', 'active': path.startswith('/settings'), 'icon': 'settings'},
+  ] %}
+  {% set current_title = 'Dashboard' %}
+  {% set current_subtitle = 'Fleet command view' %}
+  {% if path.startswith('/nodes') %}
+    {% set current_title = 'Nodes' %}
+    {% set current_subtitle = 'Inventory, selection, and rollout control' %}
+  {% elif path.startswith('/map') %}
+    {% set current_title = 'Map' %}
+    {% set current_subtitle = 'Spatial activity and location quality' %}
+  {% elif path.startswith('/groups') %}
+    {% set current_title = 'Groups' %}
+    {% set current_subtitle = 'Target cohorts and desired state policy' %}
+  {% elif path.startswith('/jobs') %}
+    {% set current_title = 'Jobs' %}
+    {% set current_subtitle = 'Execution queue, status, and results' %}
+  {% elif path.startswith('/audit') %}
+    {% set current_title = 'Audit' %}
+    {% set current_subtitle = 'Operator trace and system history' %}
+  {% elif path.startswith('/settings') %}
+    {% set current_title = 'Settings' %}
+    {% set current_subtitle = 'Integrations, defaults, and system posture' %}
+  {% endif %}
+  <svg class="shell-icons" aria-hidden="true" focusable="false">
+    <symbol id="icon-dashboard" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z" fill="currentColor"/></symbol>
+    <symbol id="icon-nodes" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v1.2l3.4 1.9A3 3 0 0 1 20 11.7v.6a3 3 0 0 1-1.6 2.6L15 16.8V18a3 3 0 1 1-6 0v-1.2l-3.4-1.9A3 3 0 0 1 4 12.3v-.6a3 3 0 0 1 1.6-2.6L9 7.2V6a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v1h2V6a1 1 0 0 0-1-1Zm5 6a1 1 0 0 0-.5-.87L13 8.2v3.3l3 1.7.5-.28a1 1 0 0 0 .5-.87v-.6Zm-10 0v.6a1 1 0 0 0 .5.87l.5.28 3-1.7V8.2l-3.5 1.93A1 1 0 0 0 7 11Zm5 8a1 1 0 0 0 1-1v-1h-2v1a1 1 0 0 0 1 1Z" fill="currentColor"/></symbol>
+    <symbol id="icon-map" viewBox="0 0 24 24"><path d="M9 4.5 15 2l6 2.5v15L15 22l-6-2.5L3 22V6.5L9 4.5Zm1 2.2v11.1l4 1.6V8.3l-4-1.6Z" fill="currentColor"/></symbol>
+    <symbol id="icon-groups" viewBox="0 0 24 24"><path d="M9 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm8 2a3 3 0 1 1 0-6 3 3 0 0 1 0 6ZM3 19a5 5 0 0 1 10 0v1H3v-1Zm11 1v-1a5.9 5.9 0 0 0-1.2-3.6A4.5 4.5 0 0 1 21 19v1h-7Z" fill="currentColor"/></symbol>
+    <symbol id="icon-jobs" viewBox="0 0 24 24"><path d="M7 3h10v3h3v15H4V6h3V3Zm2 3h6V5H9v1Zm1 5h7v2h-7v-2Zm0 4h5v2h-5v-2Zm-3-4h2v2H7v-2Zm0 4h2v2H7v-2Z" fill="currentColor"/></symbol>
+    <symbol id="icon-audit" viewBox="0 0 24 24"><path d="M6 4h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm8 1.5V10h4.5L14 5.5ZM8 12h8v1.8H8V12Zm0 4h8v1.8H8V16Z" fill="currentColor"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><path d="m12 3 1.2 2.5 2.8.4.8 2.7 2.4 1.5-1 2.6 1 2.6-2.4 1.5-.8 2.7-2.8.4L12 21l-1.2-2.5-2.8-.4-.8-2.7-2.4-1.5 1-2.6-1-2.6 2.4-1.5.8-2.7 2.8-.4L12 3Zm0 5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" fill="currentColor"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm8.9 11.5 1.4 1.4-2 2-1.4-1.4-2.2-2.2 2-2 2.2 2.2Z" fill="currentColor"/></symbol>
+  </svg>
+  {% if user %}
+  <div class="app-frame">
+    <aside class="app-sidebar">
+      <div class="sidebar-brand">
+        <a href="/" class="brand-lockup">
+          <span class="brand-mark">M</span>
+          <span>
+            <strong>Meshonator</strong>
+            <small>meshstats family console</small>
+          </span>
+        </a>
+      </div>
+      <nav class="sidebar-nav" aria-label="Primary">
+        {% for item in nav_items %}
+        <a href="{{ item.href }}" class="sidebar-link {{ 'active' if item.active else '' }}">
+          <span class="sidebar-link-icon"><svg class="nav-icon"><use href="#icon-{{ item.icon }}"></use></svg></span>
+          <span class="sidebar-link-copy">
+            <span class="sidebar-link-label">{{ item.label }}</span>
+          </span>
+        </a>
+        {% endfor %}
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-status-card">
+          <span class="sidebar-status-label">Build</span>
+          <strong>{{ build_version }}</strong>
+          <small>{{ build_date }}</small>
+        </div>
+      </div>
+    </aside>
+    <div class="app-main">
+      <header class="topbar shell-topbar">
+        <div class="topbar-inner shell-topbar-inner">
+          <div class="shell-title-block">
+            <p class="shell-kicker">{{ app_name }}</p>
+            <h1>{{ current_title }}</h1>
+            <p>{{ current_subtitle }}</p>
+          </div>
+          <div class="shell-toolbar">
+            <form method="get" action="{{ path }}" class="topbar-search" role="search">
+              <svg class="topbar-search-icon"><use href="#icon-search"></use></svg>
+              <input type="search" name="q" value="{{ request.query_params.get('q', '') if request is defined else '' }}" placeholder="Search current view" aria-label="Search current view" />
+            </form>
+            <div class="shell-meta">
+              <span class="status-pill status-pill-online">Operator session</span>
+              <form method="post" action="/logout"><button class="ghost-button">Logout {{ user.username }}</button></form>
+            </div>
+          </div>
+        </div>
+      </header>
+      <main class="container shell-container">
+  {% else %}
+      <main class="container">
+  {% endif %}
+      {% block content %}{% endblock %}
+      </main>
+  {% if user %}
+      <footer class="footer footer-shell">
+        <div>{{ app_name }}</div>
+        <div>Build {{ build_version }}</div>
+        <div>Rebuild {{ build_date }}</div>
+      </footer>
     </div>
-    {% if user %}
-    <nav class="primary-nav">
-      <a href="/" class="{{ 'active' if path == '/' else '' }}">Dashboard</a>
-      <a href="/nodes" class="{{ 'active' if path.startswith('/nodes') else '' }}">Nodes</a>
-      <a href="/map" class="{{ 'active' if path.startswith('/map') else '' }}">Map</a>
-      <a href="/groups" class="{{ 'active' if path.startswith('/groups') else '' }}">Groups</a>
-      <a href="/jobs" class="{{ 'active' if path.startswith('/jobs') else '' }}">Jobs</a>
-      <a href="/audit" class="{{ 'active' if path.startswith('/audit') else '' }}">Audit</a>
-      <a href="/settings" class="{{ 'active' if path.startswith('/settings') else '' }}">Settings</a>
-    </nav>
-    <form method="post" action="/logout"><button class="ghost-button">Logout ({{ user.username }})</button></form>
-    {% endif %}
-    </div>
-  </header>
-  <main class="container">{% block content %}{% endblock %}</main>
-  <footer class="footer">
-    <div>{{ app_name }}</div>
-    <div>Build {{ build_version }}</div>
-    <div>Rebuild {{ build_date }}</div>
-  </footer>
+  </div>
+  {% endif %}
 </body>
 </html>

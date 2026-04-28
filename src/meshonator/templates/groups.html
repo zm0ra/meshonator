@@ -173,14 +173,25 @@
         <summary>Manual members</summary>
         <div class="stack mt-1">
           {% if selected_nodes %}
-          <form method="post" action="/ui/groups/{{ entry.group.id }}/assign-selected" class="stack">
-            {% for node in selected_nodes %}
-            <input type="hidden" name="selected_node_ids" value="{{ node.id }}" />
-            {% endfor %}
-            <button type="submit">Add {{ selected_nodes|length }} selected nodes as manual members</button>
-          </form>
+          <div class="button-row">
+            <form method="post" action="/ui/groups/{{ entry.group.id }}/assign-selected" class="stack">
+              {% for node in selected_nodes %}
+              <input type="hidden" name="selected_node_ids" value="{{ node.id }}" />
+              {% endfor %}
+              <button type="submit">Add {{ selected_nodes|length }} selected nodes</button>
+            </form>
+            <form method="post" action="/ui/groups/{{ entry.group.id }}/remove-selected" class="stack">
+              {% for node in selected_nodes %}
+              <input type="hidden" name="selected_node_ids" value="{{ node.id }}" />
+              {% endfor %}
+              <button type="submit" class="ghost-button-dark">Remove {{ selected_nodes|length }} selected nodes</button>
+            </form>
+          </div>
           {% endif %}
           <form method="post" action="/ui/groups/{{ entry.group.id }}/assign-node" class="stack">
+            {% for selected_node_id in selected_node_ids %}
+            <input type="hidden" name="selected_node_ids" value="{{ selected_node_id }}" />
+            {% endfor %}
             <label>Single node
               <select name="node_id">
                 {% for n in nodes %}
@@ -192,7 +203,16 @@
           </form>
           <div class="subtle-list">
             {% for member in entry.assigned %}
-            <a href="/nodes/{{ member.id }}" class="subtle-list-item-like">{{ node_operator_label(member) }}</a>
+            <div class="subtle-list-item-like">
+              <a href="/nodes/{{ member.id }}">{{ node_operator_label(member) }}</a>
+              <form method="post" action="/ui/groups/{{ entry.group.id }}/remove-node">
+                <input type="hidden" name="node_id" value="{{ member.id }}" />
+                {% for selected_node_id in selected_node_ids %}
+                <input type="hidden" name="selected_node_ids" value="{{ selected_node_id }}" />
+                {% endfor %}
+                <button type="submit" class="ghost-button-dark">Remove</button>
+              </form>
+            </div>
             {% else %}
             <div class="empty-state">No manual members.</div>
             {% endfor %}

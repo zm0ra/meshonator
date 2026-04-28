@@ -2696,6 +2696,26 @@ def groups_page(
     )
 
 
+def _groups_redirect_url(
+    *,
+    message: str | None = None,
+    error: str | None = None,
+    selected_node_ids: list[str] | None = None,
+) -> str:
+    params: list[tuple[str, str]] = []
+    if message:
+        params.append(("message", message))
+    if error:
+        params.append(("error", error))
+    for node_id in selected_node_ids or []:
+        value = str(node_id).strip()
+        if value:
+            params.append(("selected_node_ids", value))
+    if not params:
+        return "/groups"
+    return f"/groups?{urlencode(params)}"
+
+
 @app.post("/ui/groups/create")
 def ui_group_create(
     name: str = Form(...),
@@ -2735,6 +2755,7 @@ def ui_group_create(
 def ui_group_assign_node(
     group_id: UUID,
     node_id: UUID = Form(...),
+    selected_node_ids: list[str] = Form(default=[]),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
 ) -> RedirectResponse:
@@ -2747,10 +2768,15 @@ def ui_group_assign_node(
             group_id=group_id,
             node_id=node_id,
         )
-        return RedirectResponse(url="/groups?message=Node+assigned", status_code=303)
+        return RedirectResponse(
+            url=_groups_redirect_url(message="Node assigned", selected_node_ids=selected_node_ids),
+            status_code=303,
+        )
     except Exception as exc:
-        error = quote_plus(f"Assign failed: {exc}")
-        return RedirectResponse(url=f"/groups?error={error}", status_code=303)
+        return RedirectResponse(
+            url=_groups_redirect_url(error=f"Assign failed: {exc}", selected_node_ids=selected_node_ids),
+            status_code=303,
+        )
 
 
 @app.post("/ui/groups/{group_id}/assign-selected")
@@ -2763,7 +2789,10 @@ def ui_group_assign_selected(
     try:
         node_ids = _parse_uuid_list(selected_node_ids)
         if not node_ids:
-            return RedirectResponse(url="/groups?error=No+selected+nodes+to+assign", status_code=303)
+            return RedirectResponse(
+                url=_groups_redirect_url(error="No selected nodes to assign", selected_node_ids=selected_node_ids),
+                status_code=303,
+            )
         assigned_count = GroupsService(db).assign_nodes(group_id=group_id, node_ids=node_ids)
         AuditService(db).log(
             actor=user.username,
@@ -2775,11 +2804,85 @@ def ui_group_assign_selected(
                 "selected_node_ids": [str(node_id) for node_id in node_ids],
             },
         )
-        message = quote_plus(f"Assigned {assigned_count} selected nodes to group")
-        return RedirectResponse(url=f"/groups?message={message}", status_code=303)
+        return RedirectResponse(
+            url=_groups_redirect_url(
+                message=f"Assigned {assigned_count} selected nodes to group",
+                selected_node_ids=selected_node_ids,
+            ),
+            status_code=303,
+        )
     except Exception as exc:
-        error = quote_plus(f"Bulk assign failed: {exc}")
-        return RedirectResponse(url=f"/groups?error={error}", status_code=303)
+        return RedirectResponse(
+            url=_groups_redirect_url(error=f"Bulk assign failed: {exc}", selected_node_ids=selected_node_ids),
+            status_code=303,
+        )
+
+
+@app.post("/ui/groups/{group_id}/remove-node")
+def ui_group_remove_node(
+    group_id: UUID,
+    node_id: UUID = Form(...),
+    selected_node_ids: list[str] = Form(default=[]),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        GroupsService(db).remove_node(group_id=group_id, node_id=node_id)
+        AuditService(db).log(
+            actor=user.username,
+            source="ui",
+            action="group.remove_node",
+            group_id=group_id,
+            node_id=node_id,
+        )
+        return RedirectResponse(
+            url=_groups_redirect_url(message="Node removed", selected_node_ids=selected_node_ids),
+            status_code=303,
+        )
+    except Exception as exc:
+        return RedirectResponse(
+            url=_groups_redirect_url(error=f"Remove failed: {exc}", selected_node_ids=selected_node_ids),
+            status_code=303,
+        )
+
+
+@app.post("/ui/groups/{group_id}/remove-selected")
+def ui_group_remove_selected(
+    group_id: UUID,
+    selected_node_ids: list[str] = Form(default=[]),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("operator")),
+) -> RedirectResponse:
+    try:
+        node_ids = _parse_uuid_list(selected_node_ids)
+        if not node_ids:
+            return RedirectResponse(
+                url=_groups_redirect_url(error="No selected nodes to remove", selected_node_ids=selected_node_ids),
+                status_code=303,
+            )
+        removed_count = GroupsService(db).remove_nodes(group_id=group_id, node_ids=node_ids)
+        AuditService(db).log(
+            actor=user.username,
+            source="ui",
+            action="group.remove_selected_nodes",
+            group_id=group_id,
+            metadata={
+                "removed_count": removed_count,
+                "selected_node_ids": [str(node_id) for node_id in node_ids],
+            },
+        )
+        return RedirectResponse(
+            url=_groups_redirect_url(
+                message=f"Removed {removed_count} selected nodes from group",
+                selected_node_ids=selected_node_ids,
+            ),
+            status_code=303,
+        )
+    except Exception as exc:
+        return RedirectResponse(
+            url=_groups_redirect_url(error=f"Bulk remove failed: {exc}", selected_node_ids=selected_node_ids),
+            status_code=303,
+        )
 
 
 @app.post("/ui/groups/{group_id}/apply-template")

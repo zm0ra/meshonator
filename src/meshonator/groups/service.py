@@ -94,6 +94,19 @@ class GroupsService:
         )
         self.db.commit()
 
+    def remove_nodes(self, group_id: UUID, node_ids: list[UUID]) -> int:
+        unique_node_ids = list(dict.fromkeys(node_ids))
+        if not unique_node_ids:
+            return 0
+        result = self.db.execute(
+            delete(NodeGroupMemberModel).where(
+                NodeGroupMemberModel.group_id == group_id,
+                NodeGroupMemberModel.node_id.in_(unique_node_ids),
+            )
+        )
+        self.db.commit()
+        return int(result.rowcount or 0)
+
     def resolve_dynamic_members(self, group: NodeGroupModel) -> list[ManagedNodeModel]:
         f = group.dynamic_filter or {}
         stmt = select(ManagedNodeModel)

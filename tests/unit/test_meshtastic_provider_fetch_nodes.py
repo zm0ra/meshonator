@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import socket
+
 from meshonator.providers.meshtastic.provider import MeshtasticProvider
+from meshonator.providers.base import ProviderConnection, ProviderError
 
 
 class _FakeLocalNode:
@@ -76,3 +79,43 @@ def test_fetch_nodes_role_falls_back_to_metadata_then_preferences() -> None:
     conn_pref_role.localNode = _PrefLocalNode()
     node_pref_role = provider.fetch_nodes(conn_pref_role)[0]
     assert node_pref_role.role == "TRACKER"
+
+
+def test_connect_applies_provider_timeout_and_restores_socket_default(monkeypatch) -> None:
+    observed: dict[str, float | None] = {}
+
+    class _FakeTcpInterface:
+        def __init__(self, hostname: str, portNumber: int) -> None:
+            observed["during_init"] = socket.getdefaulttimeout()
+
+        def waitForConfig(self) -> None:
+            observed["during_wait"] = socket.getdefaulttimeout()
+
+    monkeypatch.setattr("meshonator.providers.meshtastic.provider.TCPInterface", _FakeTcpInterface)
+    provider = MeshtasticProvider()
+    provider.settings.provider_timeout_s = 0.25
+
+    previous_timeout = socket.getdefaulttimeout()
+    connection = provider.connect(ProviderConnection(endpoint="tcp://172.30.251.2:4403", host="172.30.251.2", port=4403))
+
+    assert isinstance(connection, _FakeTcpInterface)
+    assert observed["during_init"] == 0.25
+    assert observed["during_wait"] == 0.25
+    assert socket.getdefaulttimeout() == previous_timeout
+
+
+def test_connect_wraps_timeout_errors(monkeypatch) -> None:
+    class _FakeTcpInterface:
+        def __init__(self, hostname: str, portNumber: int) -> None:
+            raise TimeoutError("timed out")
+
+    monkeypatch.setattr("meshonator.providers.meshtastic.provider.TCPInterface", _FakeTcpInterface)
+    provider = MeshtasticProvider()
+
+    try:
+        provider.connect(ProviderConnection(endpoint="tcp://172.30.251.3:4403", host="172.30.251.3", port=4403))
+    except ProviderError as exc:
+        assert "172.30.251.3:4403" in str(exc)
+        assert "timed out" in str(exc)
+    else:
+        raise AssertionError("Expected ProviderError")

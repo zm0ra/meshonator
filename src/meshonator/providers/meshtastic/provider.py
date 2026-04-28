@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import socket
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -95,12 +97,13 @@ class MeshtasticProvider(Provider):
         if TCPInterface is None:
             raise ProviderError("meshtastic python library unavailable")
         try:
-            conn = TCPInterface(hostname=endpoint.host, portNumber=endpoint.port)
-            try:
-                conn.waitForConfig()
-            except Exception:
-                # Continue even if full config fetch is partial; caller can still use available data.
-                pass
+            with _socket_timeout(self.settings.provider_timeout_s):
+                conn = TCPInterface(hostname=endpoint.host, portNumber=endpoint.port)
+                try:
+                    conn.waitForConfig()
+                except Exception:
+                    # Continue even if full config fetch is partial; caller can still use available data.
+                    pass
             return conn
         except Exception as exc:  # pragma: no cover
             raise ProviderError(f"Failed to connect to {endpoint.endpoint}: {exc}") from exc
@@ -281,6 +284,16 @@ def _safe_dict(value: Any) -> dict[str, Any]:
     if hasattr(value, "__dict__"):
         return {k: v for k, v in vars(value).items() if not k.startswith("_")}
     return {"value": str(value)}
+
+
+@contextmanager
+def _socket_timeout(timeout_s: float):
+    previous_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(timeout_s)
+    try:
+        yield
+    finally:
+        socket.setdefaulttimeout(previous_timeout)
 
 
 def _safe_list(value: Any) -> list[dict[str, Any]]:

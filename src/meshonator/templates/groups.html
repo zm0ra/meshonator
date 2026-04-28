@@ -1,397 +1,271 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="page-shell">
-{% if ui_message %}<section class="panel-card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
-{% if ui_error %}<section class="panel-card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
+  {% if ui_message %}<section class="status-banner panel-card status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+  {% if ui_error %}<section class="status-banner panel-card status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
-<header class="page-hero page-hero-canvas">
-  <div>
-    <p class="eyebrow">Targeting</p>
-    <h1>Groups</h1>
-    <p class="page-summary">Groups are rollout targets, not raw JSON buckets. The default path is a rule builder plus a compact desired-state profile, with expert JSON moved behind advanced details.</p>
-  </div>
-  <div class="hero-metrics">
-    <article class="hero-metric">
-      <span>Groups</span>
-      <strong>{{ groups_view|length }}</strong>
-    </article>
-    <article class="hero-metric">
-      <span>Inventory nodes</span>
-      <strong>{{ nodes|length }}</strong>
-    </article>
-    <article class="hero-metric">
-      <span>Pending assignment</span>
-      <strong>{{ selected_nodes|length if selected_nodes is defined else 0 }}</strong>
-    </article>
-  </div>
-</header>
-
-{% if selected_nodes %}
-<section class="panel-card review-panel">
-  <div class="section-header compact-header">
+  <header class="page-header">
     <div>
-      <p class="eyebrow">Selection handoff</p>
-      <h2>{{ selected_nodes|length }} nodes arrived from inventory</h2>
+      <p class="eyebrow">Define who</p>
+      <h1>Groups</h1>
+      <p class="page-summary">Groups define membership only: rules, manual members when explicitly needed, and resolved membership preview.</p>
     </div>
-    <a href="/nodes">Back to nodes</a>
-  </div>
-  <ul class="subtle-list selected-chip-list">
-    {% for node in selected_nodes %}
-    <li>{{ node.short_name or node.provider_node_id }}<span class="muted">{{ node.provider }}</span></li>
-    {% endfor %}
-  </ul>
-</section>
-{% endif %}
+    <div class="page-actions">
+      <span class="meta-chip">{{ groups_view|length }} groups</span>
+      <span class="meta-chip">{{ nodes|length }} inventory nodes</span>
+      {% if selected_nodes %}<span class="status-pill status-pill-accent">{{ selected_nodes|length }} selected from Nodes</span>{% endif %}
+    </div>
+  </header>
 
-<section class="workspace-columns">
-  <article class="panel-card">
-    <div class="section-header">
-      <div>
-        <p class="eyebrow">Create</p>
-        <h2>New group</h2>
-      </div>
-    </div>
-    <form method="post" action="/ui/groups/create" class="stack group-profile-form">
-      <label>Name
-        <input type="text" name="name" required placeholder="west-mesh" />
-      </label>
-      <label>Description
-        <input type="text" name="description" placeholder="Routers in west area" />
-      </label>
-      <section class="form-section">
-        <div class="section-header compact-header">
-          <div>
-            <p class="eyebrow">Rule builder</p>
-            <h3>How should this group resolve members?</h3>
-          </div>
-        </div>
-        <div class="grid two">
-          <label>Provider
-            <select data-group-filter="provider">
-              <option value="">Any provider</option>
-              {% for provider_name in nodes | map(attribute='provider') | unique | list %}
-              <option value="{{ provider_name }}">{{ provider_name }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>Status
-            <select data-group-filter="reachable">
-              <option value="">Any status</option>
-              <option value="true">Online only</option>
-              <option value="false">Offline only</option>
-            </select>
-          </label>
-          <label>Role
-            <input type="text" data-group-filter="role" placeholder="ROUTER / CLIENT / CLIENT_BASE" />
-          </label>
-          <label>Pinned state
-            <select data-group-filter="favorite">
-              <option value="">Either</option>
-              <option value="true">Pinned only</option>
-              <option value="false">Unpinned only</option>
-            </select>
-          </label>
-        </div>
-      </section>
-      <section class="form-section">
-        <div class="section-header compact-header">
-          <div>
-            <p class="eyebrow">Desired state profile</p>
-            <h3>What should this group enforce?</h3>
-          </div>
-        </div>
-        <div class="grid two">
-          <label>Pin state
-            <select data-group-template="favorite">
-              <option value="">No template pin change</option>
-              <option value="true">Pin managed nodes</option>
-              <option value="false">Unpin managed nodes</option>
-            </select>
-          </label>
-          <label>Device role
-            <input type="text" data-group-template="device_role" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" />
-          </label>
-          <label>Position broadcast interval
-            <input type="number" min="0" data-group-template="position_broadcast_secs" placeholder="900" />
-          </label>
-          <label>Telemetry device interval
-            <input type="number" min="0" data-group-template="telemetry_device_update_interval" placeholder="300" />
-          </label>
-        </div>
-      </section>
-      <input type="hidden" name="dynamic_filter_json" value="{}" />
-      <input type="hidden" name="desired_template_json" value="{}" />
-      <details>
-        <summary>Advanced JSON</summary>
-        <div class="grid two mt-1">
-          <label>Dynamic filter JSON
-            <textarea name="dynamic_filter_json_advanced" rows="4" placeholder='{"provider":"meshtastic","reachable":true}'></textarea>
-          </label>
-          <label>Desired template JSON
-            <textarea name="desired_template_json_advanced" rows="4" placeholder='{"favorite":true,"local_config_patch":{"device":{"role":"ROUTER"}}}'></textarea>
-          </label>
-        </div>
-      </details>
-      <button type="submit">Create group</button>
-    </form>
-  </article>
-  <article class="panel-card">
-    <p class="eyebrow">Operator note</p>
-    <h3>Keep targeting rules visible.</h3>
-    <p class="muted">If the group intent cannot be explained in one paragraph, the targeting rule is probably too opaque for a safe rollout path.</p>
-  </article>
-</section>
-
-{% for entry in groups_view %}
-{% set desired = entry.group.desired_config_template if entry.group.desired_config_template is mapping else {} %}
-{% set local_patch = desired.get('local_config_patch', {}) if desired is mapping else {} %}
-{% set module_patch = desired.get('module_config_patch', {}) if desired is mapping else {} %}
-{% set group_filter = entry.group.dynamic_filter if entry.group.dynamic_filter is mapping else {} %}
-<section class="workspace-columns">
-  <article class="panel-card">
-    <div class="section-header">
-      <div>
-        <p class="eyebrow">Group definition</p>
-        <h2>{{ entry.group.name }}</h2>
-      </div>
-      <span class="status-pill status-pill-neutral">{{ entry.resolved|length }} resolved</span>
-    </div>
-    <p class="muted">{{ entry.group.description or 'No description provided.' }}</p>
-    <form method="post" action="/ui/groups/{{ entry.group.id }}/configure" class="stack group-profile-form">
-      <label>Description
-        <input type="text" name="description" value="{{ entry.group.description or '' }}" />
-      </label>
-      <section class="form-section">
-        <div class="section-header compact-header">
-          <div>
-            <p class="eyebrow">Rule builder</p>
-            <h3>Resolved membership</h3>
-          </div>
-        </div>
-        <div class="grid two">
-          <label>Provider
-            <select data-group-filter="provider">
-              <option value="">Any provider</option>
-              {% for provider_name in nodes | map(attribute='provider') | unique | list %}
-              <option value="{{ provider_name }}" {% if group_filter.get('provider') == provider_name %}selected{% endif %}>{{ provider_name }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>Status
-            <select data-group-filter="reachable">
-              <option value="">Any status</option>
-              <option value="true" {% if group_filter.get('reachable') is sameas true %}selected{% endif %}>Online only</option>
-              <option value="false" {% if group_filter.get('reachable') is sameas false %}selected{% endif %}>Offline only</option>
-            </select>
-          </label>
-          <label>Role
-            <input type="text" data-group-filter="role" value="{{ group_filter.get('role', '') }}" placeholder="ROUTER / CLIENT / CLIENT_BASE" />
-          </label>
-          <label>Pinned state
-            <select data-group-filter="favorite">
-              <option value="">Either</option>
-              <option value="true" {% if group_filter.get('favorite') is sameas true %}selected{% endif %}>Pinned only</option>
-              <option value="false" {% if group_filter.get('favorite') is sameas false %}selected{% endif %}>Unpinned only</option>
-            </select>
-          </label>
-        </div>
-      </section>
-      <section class="form-section">
-        <div class="section-header compact-header">
-          <div>
-            <p class="eyebrow">Desired state</p>
-            <h3>Profile to apply to this group</h3>
-          </div>
-        </div>
-        <div class="grid two">
-          <label>Template pin state
-            <select name="template_favorite_state">
-              <option value="">No change</option>
-              <option value="true">Pin in Meshonator</option>
-              <option value="false">Unpin in Meshonator</option>
-            </select>
-          </label>
-          <label>Template device role
-            <input type="text" name="template_device_role" value="{{ local_patch.get('device', {}).get('role', '') }}" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" />
-          </label>
-          <label>Template position broadcast interval
-            <input type="number" min="0" name="template_position_broadcast_secs" value="{{ local_patch.get('position', {}).get('positionBroadcastSecs', '') }}" placeholder="900" />
-          </label>
-          <label>Template smart position broadcast
-            <select name="template_position_broadcast_smart_enabled">
-              <option value="">No change</option>
-              <option value="true">Enable</option>
-              <option value="false">Disable</option>
-            </select>
-          </label>
-          <label>Template GPS update interval
-            <input type="number" min="0" name="template_gps_update_interval" value="{{ local_patch.get('position', {}).get('gpsUpdateInterval', '') }}" placeholder="120" />
-          </label>
-          <label>Template GPS enabled
-            <select name="template_gps_enabled">
-              <option value="">No change</option>
-              <option value="true">Enable</option>
-              <option value="false">Disable</option>
-            </select>
-          </label>
-          <label>Template LoRa hop limit
-            <input type="number" min="0" name="template_lora_hop_limit" value="{{ local_patch.get('lora', {}).get('hopLimit', '') }}" placeholder="7" />
-          </label>
-          <label>Template LoRa TX power
-            <input type="number" min="0" name="template_lora_tx_power" value="{{ local_patch.get('lora', {}).get('txPower', '') }}" placeholder="27" />
-          </label>
-          <label>Template telemetry device interval
-            <input type="number" min="0" name="template_telemetry_device_update_interval" value="{{ module_patch.get('telemetry', {}).get('deviceUpdateInterval', '') }}" placeholder="300" />
-          </label>
-          <label>Template telemetry device enabled
-            <select name="template_telemetry_device_enabled">
-              <option value="">No change</option>
-              <option value="true">Enable</option>
-              <option value="false">Disable</option>
-            </select>
-          </label>
-        </div>
-      </section>
-      <input type="hidden" name="dynamic_filter_json" value="{{ entry.group.dynamic_filter | tojson }}" />
-      <textarea name="desired_template_json" hidden>{{ entry.group.desired_config_template | tojson }}</textarea>
-      <details>
-        <summary>Advanced JSON</summary>
-        <div class="grid two mt-1">
-          <label>Dynamic filter JSON
-            <textarea name="dynamic_filter_json_advanced" rows="4">{{ entry.group.dynamic_filter | tojson(indent=2) }}</textarea>
-          </label>
-          <label>Desired template JSON
-            <textarea name="desired_template_json_advanced" rows="4">{{ entry.group.desired_config_template | tojson(indent=2) }}</textarea>
-          </label>
-        </div>
-      </details>
-      <button type="submit">Save group profile</button>
-    </form>
-    <form method="post" action="/ui/groups/{{ entry.group.id }}/apply-template" class="stack mt-1 panel-divider-top">
-      <label><input type="checkbox" name="dry_run" value="true" checked /> Dry run</label>
-      <button type="submit">Queue template apply</button>
-    </form>
-    {% if selected_nodes %}
-    <form method="post" action="/ui/groups/{{ entry.group.id }}/assign-selected" class="stack mt-1">
-      {% for node in selected_nodes %}
-      <input type="hidden" name="selected_node_ids" value="{{ node.id }}" />
-      {% endfor %}
-      <button type="submit">Assign {{ selected_nodes|length }} selected nodes to {{ entry.group.name }}</button>
-    </form>
-    {% endif %}
-    <form method="post" action="/ui/groups/{{ entry.group.id }}/nodedb/routing-favorites" class="stack mt-1">
-      <label>NodeDB action
-        <select name="action">
-          <option value="set_favorite">Set favorite node</option>
-          <option value="remove_favorite">Remove favorite node</option>
-          <option value="remove_node">Remove node from NodeDB</option>
-        </select>
-      </label>
-      <label>Source max hops
-        <input type="number" name="source_max_hops" min="0" value="0" />
-      </label>
-      <label>Allowed source and target roles
-        <input type="text" name="allowed_roles_text" value="ROUTER,ROUTER_LATE,CLIENT_BASE" />
-      </label>
-      <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-      <button type="submit">Queue NodeDB group job</button>
-    </form>
-  </article>
-  <article class="panel-card">
+  {% if selected_nodes %}
+  <article class="review-panel">
     <div class="section-header compact-header">
       <div>
-        <p class="eyebrow">Membership</p>
-        <h3>Assign and inspect members</h3>
+        <p class="eyebrow">Manual membership handoff</p>
+        <h2>{{ selected_nodes|length }} nodes arrived from Nodes</h2>
       </div>
+      <a href="/nodes" class="ghost-link">Back to nodes</a>
     </div>
-    <form method="post" action="/ui/groups/{{ entry.group.id }}/assign-node" class="stack">
-      <label>Node
-        <select name="node_id">
-          {% for n in nodes %}
-          <option value="{{ n.id }}">{{ n.provider }} :: {{ n.provider_node_id }} :: {{ n.short_name or n.long_name or "unnamed" }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <button type="submit">Assign to group</button>
-    </form>
-    <h3>Assigned Members</h3>
-    <ul class="subtle-list">
-      {% for member in entry.assigned %}
-      <li><a href="/nodes/{{ member.id }}">{{ member.provider }} / {{ member.provider_node_id }}</a></li>
+    <div class="selected-chip-list">
+      {% for node in selected_nodes[:8] %}
+      <span class="meta-chip">{{ node_operator_label(node) }}</span>
       {% endfor %}
-      {% if not entry.assigned %}<li class="muted">No assigned members.</li>{% endif %}
-    </ul>
-    <h3>Resolved Members</h3>
-    <ul class="subtle-list">
-      {% for member in entry.resolved %}
-      <li><a href="/nodes/{{ member.id }}">{{ member.provider }} / {{ member.provider_node_id }}</a></li>
-      {% endfor %}
-      {% if not entry.resolved %}<li class="muted">No resolved members.</li>{% endif %}
-    </ul>
+      {% if selected_nodes|length > 8 %}<span class="meta-chip">+{{ selected_nodes|length - 8 }} more</span>{% endif %}
+    </div>
   </article>
-</section>
-{% endfor %}
+  {% endif %}
+
+  <section class="workspace-columns">
+    <article class="panel-card">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Create group</p>
+          <h2>New target definition</h2>
+        </div>
+      </div>
+      <form method="post" action="/ui/groups/create" class="stack group-filter-form">
+        <label>Name
+          <input type="text" name="name" required placeholder="west-mesh" />
+        </label>
+        <label>Description
+          <input type="text" name="description" placeholder="Routers in west area" />
+        </label>
+        <section class="form-section">
+          <div class="section-header compact-header">
+            <div>
+              <p class="eyebrow">Dynamic rules</p>
+              <h3>Resolved membership rules</h3>
+            </div>
+          </div>
+          <div class="grid two">
+            <label>Provider
+              <select data-group-filter="provider">
+                <option value="">Any provider</option>
+                {% for provider_name in nodes | map(attribute='provider') | unique | list %}
+                <option value="{{ provider_name }}">{{ provider_name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Status
+              <select data-group-filter="reachable">
+                <option value="">Any status</option>
+                <option value="true">Online only</option>
+                <option value="false">Offline only</option>
+              </select>
+            </label>
+            <label>Role
+              <input type="text" data-group-filter="role" placeholder="ROUTER / CLIENT / CLIENT_BASE" />
+            </label>
+            <label>Pinned state
+              <select data-group-filter="favorite">
+                <option value="">Either</option>
+                <option value="true">Pinned only</option>
+                <option value="false">Unpinned only</option>
+              </select>
+            </label>
+          </div>
+        </section>
+        <input type="hidden" name="dynamic_filter_json" value="{}" />
+        <input type="hidden" name="desired_template_json" value="{}" />
+        <details>
+          <summary>Advanced JSON filter</summary>
+          <label class="mt-1">Dynamic filter JSON
+            <textarea name="dynamic_filter_json_advanced" rows="4" placeholder='{"provider":"meshtastic","reachable":true}'></textarea>
+          </label>
+        </details>
+        <button type="submit">Create group</button>
+      </form>
+    </article>
+
+    <article class="panel-card panel-card-dark">
+      <p class="eyebrow">Scope rule</p>
+      <h3>Groups define targets only.</h3>
+      <p class="table-secondary">Use Groups to resolve who belongs. Open members in Nodes when you need Configure, Review, and Queue.</p>
+    </article>
+  </section>
+
+  {% for entry in groups_view %}
+  {% set group_filter = entry.group.dynamic_filter if entry.group.dynamic_filter is mapping else {} %}
+  <section class="workspace-columns">
+    <article class="panel-card">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Group definition</p>
+          <h2>{{ entry.group.name }}</h2>
+        </div>
+        <div class="button-row">
+          <a href="{{ entry.open_members_href }}" class="ghost-link">Open members in Nodes</a>
+          <a href="{{ entry.configure_members_href }}" class="ghost-link">Configure via Nodes</a>
+        </div>
+      </div>
+      <p class="table-secondary">{{ entry.group.description or 'No description provided.' }}</p>
+      <form method="post" action="/ui/groups/{{ entry.group.id }}/configure" class="stack group-filter-form">
+        <label>Description
+          <input type="text" name="description" value="{{ entry.group.description or '' }}" />
+        </label>
+        <section class="form-section">
+          <div class="section-header compact-header">
+            <div>
+              <p class="eyebrow">Dynamic rules</p>
+              <h3>Resolved membership</h3>
+            </div>
+          </div>
+          <div class="grid two">
+            <label>Provider
+              <select data-group-filter="provider">
+                <option value="">Any provider</option>
+                {% for provider_name in nodes | map(attribute='provider') | unique | list %}
+                <option value="{{ provider_name }}" {% if group_filter.get('provider') == provider_name %}selected{% endif %}>{{ provider_name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Status
+              <select data-group-filter="reachable">
+                <option value="">Any status</option>
+                <option value="true" {% if group_filter.get('reachable') is sameas true %}selected{% endif %}>Online only</option>
+                <option value="false" {% if group_filter.get('reachable') is sameas false %}selected{% endif %}>Offline only</option>
+              </select>
+            </label>
+            <label>Role
+              <input type="text" data-group-filter="role" value="{{ group_filter.get('role', '') }}" placeholder="ROUTER / CLIENT / CLIENT_BASE" />
+            </label>
+            <label>Pinned state
+              <select data-group-filter="favorite">
+                <option value="">Either</option>
+                <option value="true" {% if group_filter.get('favorite') is sameas true %}selected{% endif %}>Pinned only</option>
+                <option value="false" {% if group_filter.get('favorite') is sameas false %}selected{% endif %}>Unpinned only</option>
+              </select>
+            </label>
+          </div>
+        </section>
+        <input type="hidden" name="dynamic_filter_json" value="{{ entry.group.dynamic_filter | tojson }}" />
+        <input type="hidden" name="desired_template_json" value="{}" />
+        <details>
+          <summary>Advanced JSON filter</summary>
+          <label class="mt-1">Dynamic filter JSON
+            <textarea name="dynamic_filter_json_advanced" rows="4">{{ entry.group.dynamic_filter | tojson(indent=2) }}</textarea>
+          </label>
+        </details>
+        <button type="submit">Save targeting rules</button>
+      </form>
+
+      <details class="panel-divider-top">
+        <summary>Manual members</summary>
+        <div class="stack mt-1">
+          {% if selected_nodes %}
+          <form method="post" action="/ui/groups/{{ entry.group.id }}/assign-selected" class="stack">
+            {% for node in selected_nodes %}
+            <input type="hidden" name="selected_node_ids" value="{{ node.id }}" />
+            {% endfor %}
+            <button type="submit">Add {{ selected_nodes|length }} selected nodes as manual members</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/ui/groups/{{ entry.group.id }}/assign-node" class="stack">
+            <label>Single node
+              <select name="node_id">
+                {% for n in nodes %}
+                <option value="{{ n.id }}">{{ node_operator_label(n) }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit">Add manual member</button>
+          </form>
+          <div class="subtle-list">
+            {% for member in entry.assigned %}
+            <a href="/nodes/{{ member.id }}" class="subtle-list-item-like">{{ node_operator_label(member) }}</a>
+            {% else %}
+            <div class="empty-state">No manual members.</div>
+            {% endfor %}
+          </div>
+        </div>
+      </details>
+    </article>
+
+    <article class="panel-card">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Resolved members</p>
+          <h2>{{ entry.resolved|length }} nodes</h2>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table data-table-compact">
+          <tr><th>Node</th><th>Role</th><th>Status</th><th>Last seen</th><th>Location</th></tr>
+          {% for member in entry.resolved %}
+          <tr>
+            <td>
+              <div class="node-identity">
+                <a href="/nodes/{{ member.id }}" class="node-link-compact">{{ node_identity(member) }}</a>
+                <span class="table-secondary">{{ node_display_name(member) }}</span>
+              </div>
+            </td>
+            <td>{{ member.role or '-' }}</td>
+            <td><span class="status-pill status-pill-{{ 'success' if member.reachable else 'warning' }}">{{ 'online' if member.reachable else 'offline' }}</span></td>
+            <td><span title="{{ exact_timestamp(member.last_seen) }}">{{ relative_timestamp(member.last_seen) }}</span></td>
+            <td>{% if member.latitude is not none and member.longitude is not none %}{{ '%.5f'|format(member.latitude) }}, {{ '%.5f'|format(member.longitude) }}{% else %}<span class="muted">Missing</span>{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="muted">No resolved members.</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </article>
+  </section>
+  {% else %}
+  <div class="empty-state">Create the first group to define a reusable target set.</div>
+  {% endfor %}
 </section>
 
 <script>
-function buildGroupFilter(form) {
-  const advanced = form.querySelector('[name="dynamic_filter_json_advanced"]');
-  if (advanced && advanced.value.trim()) {
-    form.querySelector('[name="dynamic_filter_json"]').value = advanced.value.trim();
-    return;
-  }
-  const filter = {};
-  form.querySelectorAll('[data-group-filter]').forEach(function (field) {
-    const key = field.getAttribute('data-group-filter');
-    const value = (field.value || '').trim();
-    if (!value) {
+  function buildGroupFilter(form) {
+    const advanced = form.querySelector('[name="dynamic_filter_json_advanced"]');
+    const hidden = form.querySelector('[name="dynamic_filter_json"]');
+    if (!hidden) {
       return;
     }
-    if (value === 'true') {
-      filter[key] = true;
-    } else if (value === 'false') {
-      filter[key] = false;
-    } else {
-      filter[key] = value;
+    if (advanced && advanced.value.trim()) {
+      hidden.value = advanced.value.trim();
+      return;
     }
-  });
-  form.querySelector('[name="dynamic_filter_json"]').value = JSON.stringify(filter);
-}
+    const payload = {};
+    form.querySelectorAll('[data-group-filter]').forEach((field) => {
+      if (!field.value) {
+        return;
+      }
+      const key = field.getAttribute('data-group-filter');
+      if (field.value === 'true') {
+        payload[key] = true;
+      } else if (field.value === 'false') {
+        payload[key] = false;
+      } else {
+        payload[key] = field.value;
+      }
+    });
+    hidden.value = JSON.stringify(payload);
+  }
 
-function buildDesiredTemplate(form) {
-  const advanced = form.querySelector('[name="desired_template_json_advanced"]');
-  if (advanced && advanced.value.trim()) {
-    form.querySelector('[name="desired_template_json"]').value = advanced.value.trim();
-    return;
-  }
-  const template = {};
-  const favorite = form.querySelector('[data-group-template="favorite"]');
-  const deviceRole = form.querySelector('[data-group-template="device_role"]');
-  const positionBroadcast = form.querySelector('[data-group-template="position_broadcast_secs"]');
-  const telemetryDevice = form.querySelector('[data-group-template="telemetry_device_update_interval"]');
-  if (favorite && favorite.value) {
-    template.favorite = favorite.value === 'true';
-  }
-  if (deviceRole && deviceRole.value.trim()) {
-    template.local_config_patch = template.local_config_patch || {};
-    template.local_config_patch.device = { role: deviceRole.value.trim().toUpperCase() };
-  }
-  if (positionBroadcast && positionBroadcast.value.trim()) {
-    template.local_config_patch = template.local_config_patch || {};
-    template.local_config_patch.position = template.local_config_patch.position || {};
-    template.local_config_patch.position.positionBroadcastSecs = Number(positionBroadcast.value);
-  }
-  if (telemetryDevice && telemetryDevice.value.trim()) {
-    template.module_config_patch = { telemetry: { deviceUpdateInterval: Number(telemetryDevice.value) } };
-  }
-  form.querySelector('[name="desired_template_json"]').value = JSON.stringify(template);
-}
-
-document.querySelectorAll('.group-profile-form').forEach(function (form) {
-  form.addEventListener('submit', function () {
-    buildGroupFilter(form);
-    buildDesiredTemplate(form);
+  document.querySelectorAll('.group-filter-form').forEach((form) => {
+    form.addEventListener('submit', () => buildGroupFilter(form));
   });
-});
 </script>
 {% endblock %}

@@ -1,53 +1,26 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="page-shell">
-{% if ui_message %}<section class="panel-card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
-{% if ui_error %}<section class="panel-card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
+  {% if ui_message %}<section class="status-banner panel-card status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+  {% if ui_error %}<section class="status-banner panel-card status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
-<header class="page-hero page-hero-steel">
-  <div>
-    <p class="eyebrow">Inventory</p>
-    <h1>Nodes</h1>
-    <p class="page-summary">The inventory table is now the primary workspace. Selection stays persistent inside the page, bulk actions live in one bar, and heavy tools move into secondary drawers instead of taking over the screen.</p>
-  </div>
-  <div class="hero-metrics">
-    <article class="hero-metric">
-      <span>Visible nodes</span>
-      <strong>{{ nodes|length }}</strong>
-    </article>
-    <article class="hero-metric">
-      <span>Online</span>
-      <strong>{{ counts.online }}</strong>
-    </article>
-    <article class="hero-metric">
-      <span>Missing location</span>
-      <strong>{{ nodes|length - counts.mapped }}</strong>
-    </article>
-    <article class="hero-metric">
-      <span>Selected</span>
-      <strong>{{ counts.selected }}</strong>
-    </article>
-  </div>
-</header>
-
-<section class="panel-card">
-  <div class="section-header compact-header">
+  <header class="page-header">
     <div>
-      <p class="eyebrow">Filter bar</p>
-      <h2>Find the slice you need before you act</h2>
+      <p class="eyebrow">Select targets</p>
+      <h1>Nodes</h1>
+      <p class="page-summary">Inventory, checkbox selection, and reviewed rollout control. The table is the primary workspace.</p>
     </div>
-  </div>
-  <form method="get" action="/nodes" class="filter-bar">
+    <div class="page-actions">
+      <span class="meta-chip">{{ nodes|length }} visible</span>
+      <span class="status-pill status-pill-success">{{ counts.online }} online</span>
+      <span class="status-pill status-pill-warning">{{ counts.offline }} offline</span>
+      <span class="status-pill status-pill-accent">{{ counts.selected }} selected</span>
+    </div>
+  </header>
+
+  <form method="get" action="/nodes" class="panel-card filter-bar" id="nodes-filter-form">
     <label>Search
-      <input type="search" name="q" value="{{ filters.q }}" placeholder="Name, provider ID, host, hardware" />
-    </label>
-    <label>Provider
-      <select name="provider">
-        <option value="">All providers</option>
-        {% for provider_name in providers %}
-        <option value="{{ provider_name }}" {% if provider == provider_name %}selected{% endif %}>{{ provider_name }}</option>
-        {% endfor %}
-      </select>
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Node name, id, host, hardware" />
     </label>
     <label>Status
       <select name="status">
@@ -78,338 +51,389 @@
         {% endfor %}
       </select>
     </label>
+    <label>Provider
+      <select name="provider">
+        <option value="">All providers</option>
+        {% for provider_name in providers %}
+        <option value="{{ provider_name }}" {% if provider == provider_name %}selected{% endif %}>{{ provider_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
     <div class="button-row filter-actions">
       <button type="submit">Apply filters</button>
       <a href="/nodes" class="ghost-link">Clear</a>
     </div>
+    <div id="filter-selection-inputs" class="filter-hidden-inputs"></div>
   </form>
-</section>
 
-<form id="node-selection-form" method="get" action="/nodes/batch-configure" class="selection-layout">
-  <section class="panel-card">
-    <div class="section-header">
-      <div>
-        <p class="eyebrow">Inventory table</p>
-        <h2>Fleet node table</h2>
+  <form id="node-selection-form" method="get" action="/nodes/batch-configure" class="selection-layout">
+    <div id="selection-hidden-inputs" class="filter-hidden-inputs"></div>
+    <article class="panel-card">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Inventory table</p>
+          <h2>Operator inventory</h2>
+        </div>
+        <div class="button-row">
+          <button type="button" onclick="toggleAllVisible(true)">Select visible</button>
+          <button type="button" class="ghost-button-dark" onclick="toggleAllVisible(false)">Clear visible</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table node-table">
+          <tr>
+            <th><span class="eyebrow">Pick</span></th>
+            <th>Node</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Last seen</th>
+            <th>Location</th>
+            <th>Actions</th>
+          </tr>
+          {% for n in nodes %}
+          {% set primary_ep = (n.endpoints | selectattr('is_primary') | list | first) %}
+          {% set fallback_ep = (n.endpoints | list | first) %}
+          {% set endpoint = primary_ep or fallback_ep %}
+          <tr data-node-id="{{ n.id }}" data-node-label="{{ node_operator_label(n) }}" data-node-name="{{ node_display_name(n) }}" data-node-host="{{ endpoint.host if endpoint else '' }}" data-node-hardware="{{ n.hardware_model or '' }}" data-node-status="{{ 'online' if n.reachable else 'offline' }}" data-node-role="{{ n.role or '-' }}" data-node-location="{{ ('%.5f'|format(n.latitude) ~ ', ' ~ '%.5f'|format(n.longitude)) if n.latitude is not none and n.longitude is not none else 'Missing' }}" data-node-last-seen="{{ exact_timestamp(n.last_seen) }}">
+            <td><input type="checkbox" class="node-selector" data-node-id="{{ n.id }}" /></td>
+            <td>
+              <div class="node-identity">
+                <a href="/nodes/{{ n.id }}" class="node-identity-line">{{ node_identity(n) }}</a>
+                <span class="node-name-line">{{ node_display_name(n) }}</span>
+                <div class="node-secondary">
+                  {% if n.hardware_model %}<span class="meta-chip">{{ n.hardware_model }}</span>{% endif %}
+                  {% if endpoint %}<span class="meta-chip">{{ endpoint.host }}</span>{% endif %}
+                  {% if n.favorite %}<span class="status-pill status-pill-accent">Pinned</span>{% endif %}
+                </div>
+              </div>
+            </td>
+            <td>{{ n.role or '-' }}</td>
+            <td><span class="status-pill status-pill-{{ 'success' if n.reachable else 'warning' }}">{{ 'online' if n.reachable else 'offline' }}</span></td>
+            <td><span title="{{ exact_timestamp(n.last_seen) }}">{{ relative_timestamp(n.last_seen) }}</span></td>
+            <td>
+              {% if n.latitude is not none and n.longitude is not none %}
+              {{ '%.5f'|format(n.latitude) }}, {{ '%.5f'|format(n.longitude) }}
+              {% else %}
+              <span class="muted">Missing</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="button-row">
+                <a href="/nodes/{{ n.id }}" class="ghost-link">Open</a>
+                <details class="table-row-details">
+                  <summary>Details</summary>
+                  <div class="row-detail-panel">
+                    <div class="detail-pair-grid">
+                      <div class="detail-pair"><span>Provider</span><strong>{{ n.provider }}</strong></div>
+                      <div class="detail-pair"><span>Provider node id</span><strong>{{ n.provider_node_id }}</strong></div>
+                      <div class="detail-pair"><span>Firmware</span><strong>{{ n.firmware_version or '-' }}</strong></div>
+                      <div class="detail-pair"><span>Hardware</span><strong>{{ n.hardware_model or '-' }}</strong></div>
+                      <div class="detail-pair"><span>Primary endpoint</span><strong>{{ endpoint.endpoint if endpoint else '-' }}</strong></div>
+                      <div class="detail-pair"><span>Node number</span><strong>{{ n.node_num or '-' }}</strong></div>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="muted">No nodes match the current filters.</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </article>
+
+    <section class="bulk-action-bar" id="bulk-action-bar" hidden>
+      <div class="bulk-selection-preview">
+        <strong><span id="selected-node-count">0</span> selected</strong>
+        <div id="selected-node-preview" class="selected-chip-list"></div>
       </div>
       <div class="button-row">
-        <button type="button" onclick="toggleAllNodeSelection(true)">Select visible</button>
-        <button type="button" class="ghost-button-dark" onclick="toggleAllNodeSelection(false)">Clear</button>
+        <button type="submit">Configure</button>
+        <button type="submit" formaction="/groups" formmethod="get" class="ghost-button-dark">Assign group</button>
+        <button type="button" class="ghost-button-dark" id="compare-toggle-button">Compare</button>
+        <button type="button" class="ghost-button-dark" id="export-selection-button">Export CSV</button>
+        <button type="button" class="ghost-button-dark" onclick="clearNodeSelection()">Clear</button>
       </div>
-    </div>
-    <div class="table-wrap"><table class="data-table node-table">
-      <tr>
-        <th>Select</th><th>Node</th><th>Provider</th><th>Status</th><th>Role</th><th>Location</th><th>Last Seen</th><th>Actions</th>
-      </tr>
-      {% for n in nodes %}
-      {% set primary_ep = (n.endpoints | selectattr('is_primary') | list | first) %}
-      {% set fallback_ep = (n.endpoints | list | first) %}
-      {% set endpoint = primary_ep or fallback_ep %}
-      <tr data-node-id="{{ n.id }}" data-node-label="{{ n.provider }} :: {{ n.short_name or n.provider_node_id }}" data-node-provider="{{ n.provider }}" data-node-role="{{ n.role or '-' }}" data-node-status="{{ 'online' if n.reachable else 'offline' }}" data-node-location="{{ ('%.5f'|format(n.latitude) ~ ', ' ~ '%.5f'|format(n.longitude)) if n.latitude is not none and n.longitude is not none else '-' }}" data-node-last-seen="{{ n.last_seen }}">
-        <td><input type="checkbox" name="selected_node_ids" value="{{ n.id }}" class="node-selector" {% if (n.id|string) in selected_node_ids %}checked{% endif %} /></td>
-        <td>
-          <a href="/nodes/{{ n.id }}"><strong>{{ n.short_name or n.provider_node_id }}</strong></a>
-          <div class="node-meta-stack">
-            <span class="meta-chip">{{ n.provider_node_id }}</span>
-            {% if endpoint %}<span class="meta-chip">{{ endpoint.host }}</span>{% endif %}
-            {% if n.hardware_model %}<span class="meta-chip">{{ n.hardware_model }}</span>{% endif %}
-          </div>
-        </td>
-        <td>{{ n.provider }}</td>
-        <td><span class="status-pill status-pill-{{ 'success' if n.reachable else 'danger' }}">{{ 'online' if n.reachable else 'offline' }}</span></td>
-        <td>{{ n.role or '-' }}{% if n.favorite %}<div><span class="status-pill status-pill-accent">Pinned</span></div>{% endif %}</td>
-        <td>{% if n.latitude is not none and n.longitude is not none %}{{ '%.5f'|format(n.latitude) }}, {{ '%.5f'|format(n.longitude) }}{% else %}<span class="muted">Missing</span>{% endif %}</td>
-        <td>{{ n.last_seen }}</td>
-        <td><a href="/nodes/{{ n.id }}">Open node</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="8" class="muted">No nodes match the current filter set.</td></tr>
-      {% endfor %}
-    </table></div>
-  </section>
-
-  <section class="bulk-action-bar panel-card">
-    <div>
-      <p class="eyebrow">Bulk action bar</p>
-      <h2><span id="selected-node-count">0</span> selected</h2>
-      <p class="muted">Configure, compare, assign, or export from one stable selection.</p>
-    </div>
-    <div class="button-row">
-      <button type="submit">Configure selected</button>
-      <button type="submit" formaction="/groups" formmethod="get" class="ghost-button-dark">Assign group</button>
-      <button type="button" class="ghost-button-dark" id="open-compare-builder">Compare</button>
-      <button type="button" class="ghost-button-dark" id="export-selection-button">Export CSV</button>
-    </div>
-  </section>
-</form>
-
-<section class="panel-card" id="compare-builder-panel" hidden>
-  <div class="section-header">
-    <div>
-      <p class="eyebrow">Secondary tool</p>
-      <h2>Compare selected nodes</h2>
-    </div>
-  </div>
-  <p class="muted">Choose one source from the current selection. All remaining selected nodes become targets automatically.</p>
-  <form method="post" action="/ui/nodes/compare" class="stack" id="compare-form">
-    <label>Source node
-      <select name="source_node_id" id="compare-source-select" required>
-        <option value="">Select source node</option>
-      </select>
-    </label>
-    <div class="review-panel">
-      <p class="eyebrow">Targets</p>
-      <ul class="subtle-list" id="compare-target-preview">
-        <li class="muted">Select at least two nodes to compare.</li>
-      </ul>
-      <div id="compare-target-inputs"></div>
-    </div>
-    <label><input type="checkbox" name="ignore_location" value="true" checked /> Ignore location differences</label>
-    <label><input type="checkbox" name="use_alignment_profile" value="true" checked /> Use alignment compare profile</label>
-    <button type="submit" id="compare-submit-button" disabled>Compare selected nodes</button>
+    </section>
   </form>
-</section>
 
-<section class="panel-card">
-  <div class="section-header">
-    <div>
-      <p class="eyebrow">Fleet utilities</p>
-      <h2>Global jobs that affect the whole inventory</h2>
+  <section class="detail-drawer" id="compare-builder-panel" {% if not compare_results %}hidden{% endif %}>
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Secondary detail</p>
+        <h2>Compare selected nodes</h2>
+      </div>
     </div>
-  </div>
-  <div class="grid two">
-    <form method="post" action="/ui/nodes/favorites/all" class="stack form-section">
-      <div>
-        <h3>Pin all managed nodes</h3>
-        <p class="muted">Queues a fleet-wide `favorite=true` patch for every managed node.</p>
-      </div>
-      <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-      <button type="submit">Queue fleet pin job</button>
-    </form>
-    <form method="post" action="/ui/nodes/nodedb/routing-favorites" class="stack form-section">
-      <div>
-        <h3>NodeDB routing favorites</h3>
-        <p class="muted">Mutate NodeDB favorite routing state across the fleet using role and hop filters.</p>
-      </div>
-      <label>NodeDB action
-        <select name="action">
-          <option value="set_favorite">Set favorite node</option>
-          <option value="remove_favorite">Remove favorite node</option>
-          <option value="remove_node">Remove node from NodeDB</option>
+    <form method="post" action="/ui/nodes/compare" class="stack" id="compare-form">
+      <label>Source node
+        <select name="source_node_id" id="compare-source-select" required>
+          <option value="">Select source node</option>
         </select>
       </label>
-      <label>Source max hops
-        <input type="number" name="source_max_hops" min="0" value="0" />
-      </label>
-      <label>Allowed source and target roles
-        <input type="text" name="allowed_roles_text" value="ROUTER,ROUTER_LATE,CLIENT_BASE" />
-      </label>
-      <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-      <button type="submit">Queue NodeDB fleet job</button>
+      <div class="review-panel">
+        <p class="eyebrow">Targets</p>
+        <ul class="subtle-list" id="compare-target-preview">
+          <li class="muted">Select at least two nodes to compare.</li>
+        </ul>
+        <div id="compare-target-inputs"></div>
+      </div>
+      <div class="button-row">
+        <label><input type="checkbox" name="ignore_location" value="true" checked /> Ignore location differences</label>
+        <label><input type="checkbox" name="use_alignment_profile" value="true" checked /> Use alignment compare profile</label>
+      </div>
+      <button type="submit" id="compare-submit-button" disabled>Run compare</button>
     </form>
-  </div>
-</section>
+  </section>
 
-{% if compare_results %}
-<section class="panel-card">
-  <div class="section-header">
-    <div>
-      <p class="eyebrow">Results</p>
-      <h2>Comparison Results</h2>
+  {% if compare_results %}
+  <article class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Compare result</p>
+        <h2>Difference review</h2>
+      </div>
     </div>
-  </div>
-  <div class="table-wrap"><table class="data-table">
-    <tr><th>Target</th><th>Status</th><th>Different Sections</th><th>Diff Count</th></tr>
-    {% for row in compare_results %}
-    <tr>
-      <td><a href="/nodes/{{ row.target.id }}">{{ row.target.short_name or row.target.provider_node_id }}</a></td>
-      <td><span class="status-pill status-pill-{{ 'danger' if row.status == 'different' else ('warning' if row.status == 'skipped' else 'success') }}">{{ row.status }}</span></td>
-      <td>
-        {% if row.sections %}
-          {{ row.sections | join(', ') }}
-        {% else %}
-          -
+    <div class="table-wrap">
+      <table class="data-table">
+        <tr><th>Target</th><th>Status</th><th>Changed sections</th><th>Diff count</th></tr>
+        {% for row in compare_results %}
+        <tr>
+          <td><a href="/nodes/{{ row.target.id }}">{{ node_operator_label(row.target) }}</a></td>
+          <td><span class="status-pill status-pill-{{ 'danger' if row.status == 'different' else ('warning' if row.status == 'skipped' else 'success') }}">{{ row.status }}</span></td>
+          <td>{{ row.sections | join(', ') if row.sections else '-' }}</td>
+          <td>{{ row.diff_count }}</td>
+        </tr>
+        {% if row.diffs %}
+        <tr>
+          <td colspan="4">
+            <details>
+              <summary>Show compared fields for {{ node_operator_label(row.target) }}</summary>
+              <div class="table-wrap">
+                <table class="data-table data-table-compact">
+                  <tr><th>Path</th><th>Source</th><th>Target</th></tr>
+                  {% for diff in row.diffs %}
+                  <tr>
+                    <td><code>{{ diff.path }}</code></td>
+                    <td><code>{{ diff.source }}</code></td>
+                    <td><code>{{ diff.target }}</code></td>
+                  </tr>
+                  {% endfor %}
+                </table>
+              </div>
+            </details>
+          </td>
+        </tr>
         {% endif %}
-      </td>
-      <td>{{ row.diff_count }}</td>
-    </tr>
-    {% if row.diffs %}
-    <tr>
-      <td colspan="4">
-        <details>
-          <summary>Show differences for {{ row.target.short_name or row.target.provider_node_id }}</summary>
-          <table class="data-table data-table-compact">
-            <tr><th>Path</th><th>Source</th><th>Target</th></tr>
-            {% for d in row.diffs %}
-            <tr>
-              <td><code>{{ d.path }}</code></td>
-              <td><code>{{ d.source }}</code></td>
-              <td><code>{{ d.target }}</code></td>
-            </tr>
-            {% endfor %}
-          </table>
-        </details>
-      </td>
-    </tr>
-    {% endif %}
-    {% endfor %}
-  </table></div>
-
-  <h3>Synchronize From Source To Compared Targets</h3>
-  <form method="post" action="/ui/nodes/compare-sync" class="stack">
-    <input type="hidden" name="source_node_id" value="{{ compare_source_id }}" />
-    {% for target_id in compare_target_ids %}
-    <input type="hidden" name="target_node_ids" value="{{ target_id }}" />
-    {% endfor %}
-    <label><input type="checkbox" name="sync_local_config" value="true" checked /> Sync local config (LoRa/GPS/position/network/device)</label>
-    <label><input type="checkbox" name="sync_module_config" value="true" checked /> Sync module config (telemetry/MQTT/etc.)</label>
-    <label><input type="checkbox" name="sync_channels" value="true" checked /> Sync channels</label>
-    <label><input type="checkbox" name="use_alignment_profile" value="true" checked /> Use alignment profile (target fields + ignore secrets/ambient)</label>
-    <label><input type="checkbox" name="sync_location" value="true" /> Sync location from source node</label>
-    <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-    <button type="submit">Queue Synchronization</button>
-  </form>
+        {% endfor %}
+      </table>
+    </div>
+  </article>
+  {% endif %}
 </section>
-{% endif %}
+
 <script>
-function toggleAllNodeSelection(state) {
-  document.querySelectorAll(".node-selector").forEach(function (el) {
-    el.checked = state;
+  const selectedState = new Map();
+  {% for node in selected_nodes %}
+  selectedState.set("{{ node.id }}", {
+    label: {{ node_operator_label(node) | tojson }},
+    role: {{ (node.role or '-') | tojson }},
+    status: {{ ('online' if node.reachable else 'offline') | tojson }},
+    location: {{ ((('%.5f'|format(node.latitude)) ~ ', ' ~ ('%.5f'|format(node.longitude))) if node.latitude is not none and node.longitude is not none else 'Missing') | tojson }},
+    lastSeen: {{ exact_timestamp(node.last_seen) | tojson }},
+    name: {{ node_display_name(node) | tojson }}
   });
-  refreshSelectionState();
-}
+  {% endfor %}
 
-function getSelectedRows() {
-  return Array.from(document.querySelectorAll('.node-selector:checked')).map(function (checkbox) {
-    return checkbox.closest('tr');
-  }).filter(Boolean);
-}
-
-function refreshSelectionState() {
-  const selectedRows = getSelectedRows();
-  const selectedCount = document.getElementById('selected-node-count');
-  const compareButton = document.getElementById('open-compare-builder');
-  const exportButton = document.getElementById('export-selection-button');
-  if (selectedCount) {
-    selectedCount.textContent = String(selectedRows.length);
-  }
-  if (compareButton) {
-    compareButton.disabled = selectedRows.length < 2;
-  }
-  if (exportButton) {
-    exportButton.disabled = selectedRows.length === 0;
-  }
-  syncCompareBuilder(selectedRows);
-}
-
-function syncCompareBuilder(selectedRows) {
-  const sourceSelect = document.getElementById('compare-source-select');
-  const preview = document.getElementById('compare-target-preview');
-  const hiddenInputs = document.getElementById('compare-target-inputs');
-  const submitButton = document.getElementById('compare-submit-button');
-  if (!sourceSelect || !preview || !hiddenInputs || !submitButton) {
-    return;
+  function selectionPayloadForRow(row) {
+    return {
+      label: row.dataset.nodeLabel || 'Node',
+      role: row.dataset.nodeRole || '-',
+      status: row.dataset.nodeStatus || '-',
+      location: row.dataset.nodeLocation || 'Missing',
+      lastSeen: row.dataset.nodeLastSeen || 'Never',
+      name: row.dataset.nodeName || row.dataset.nodeLabel || 'Node'
+    };
   }
 
-  const previousValue = sourceSelect.value;
-  sourceSelect.innerHTML = '<option value="">Select source node</option>';
-  selectedRows.forEach(function (row) {
-    const option = document.createElement('option');
-    option.value = row.dataset.nodeId || '';
-    option.textContent = row.dataset.nodeLabel || row.dataset.nodeId || 'Node';
-    sourceSelect.appendChild(option);
-  });
-  if (Array.from(sourceSelect.options).some(function (option) { return option.value === previousValue; })) {
-    sourceSelect.value = previousValue;
+  function syncHiddenInputs(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) {
+      return;
+    }
+    container.innerHTML = '';
+    Array.from(selectedState.keys()).forEach((nodeId) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'selected_node_ids';
+      input.value = nodeId;
+      container.appendChild(input);
+    });
   }
 
-  hiddenInputs.innerHTML = '';
-  preview.innerHTML = '';
-  const sourceId = sourceSelect.value;
-  const targets = selectedRows.filter(function (row) {
-    return (row.dataset.nodeId || '') !== sourceId;
-  });
-  if (targets.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'muted';
-    empty.textContent = selectedRows.length < 2 ? 'Select at least two nodes to compare.' : 'Choose a source node to generate targets.';
-    preview.appendChild(empty);
-  } else {
-    targets.forEach(function (row) {
+  function syncCompareBuilder() {
+    const sourceSelect = document.getElementById('compare-source-select');
+    const preview = document.getElementById('compare-target-preview');
+    const hiddenInputs = document.getElementById('compare-target-inputs');
+    const submitButton = document.getElementById('compare-submit-button');
+    if (!sourceSelect || !preview || !hiddenInputs || !submitButton) {
+      return;
+    }
+
+    const previousValue = sourceSelect.value;
+    sourceSelect.innerHTML = '<option value="">Select source node</option>';
+    Array.from(selectedState.entries()).forEach(([nodeId, payload]) => {
+      const option = document.createElement('option');
+      option.value = nodeId;
+      option.textContent = payload.label;
+      sourceSelect.appendChild(option);
+    });
+    if (selectedState.has(previousValue)) {
+      sourceSelect.value = previousValue;
+    }
+
+    const selectedIds = Array.from(selectedState.keys());
+    const sourceId = sourceSelect.value;
+    const targetIds = selectedIds.filter((nodeId) => nodeId !== sourceId);
+
+    hiddenInputs.innerHTML = '';
+    preview.innerHTML = '';
+    if (targetIds.length === 0) {
+      preview.innerHTML = '<li class="muted">Select at least two nodes to compare.</li>';
+      submitButton.disabled = true;
+      return;
+    }
+
+    targetIds.forEach((nodeId) => {
+      const payload = selectedState.get(nodeId);
       const item = document.createElement('li');
-      item.textContent = row.dataset.nodeLabel || row.dataset.nodeId || 'Node';
+      item.textContent = payload ? payload.label : nodeId;
       preview.appendChild(item);
       const input = document.createElement('input');
       input.type = 'hidden';
       input.name = 'target_node_ids';
-      input.value = row.dataset.nodeId || '';
+      input.value = nodeId;
       hiddenInputs.appendChild(input);
     });
-  }
-  submitButton.disabled = !(sourceId && targets.length > 0);
-}
-
-function exportSelectedRows() {
-  const selectedNodes = Array.from(document.querySelectorAll('.node-selector:checked'));
-  if (!selectedNodes.length) {
-    return;
+    submitButton.disabled = !sourceId || targetIds.length === 0;
   }
 
-  const header = ['node_id', 'label', 'provider', 'role', 'status', 'location', 'last_seen'];
-  const rows = selectedNodes.map(function (checkbox) {
-    const row = checkbox.closest('tr');
-    return [
-      row.dataset.nodeId || '',
-      row.dataset.nodeLabel || '',
-      row.dataset.nodeProvider || '',
-      row.dataset.nodeRole || '',
-      row.dataset.nodeStatus || '',
-      row.dataset.nodeLocation || '',
-      row.dataset.nodeLastSeen || ''
-    ].map(function (value) {
-      return '"' + String(value).replaceAll('"', '""') + '"';
-    }).join(',');
-  });
-  const csv = [header.join(','), rows.join('\n')].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'meshonator-nodes-selection.csv';
-  link.click();
-  URL.revokeObjectURL(url);
-}
+  function refreshSelectionState() {
+    const bulkBar = document.getElementById('bulk-action-bar');
+    const countEl = document.getElementById('selected-node-count');
+    const previewEl = document.getElementById('selected-node-preview');
+    const compareToggle = document.getElementById('compare-toggle-button');
+    const exportButton = document.getElementById('export-selection-button');
+    const selectedEntries = Array.from(selectedState.entries());
 
-document.querySelectorAll('.node-selector').forEach(function (el) {
-  el.addEventListener('change', refreshSelectionState);
-});
-const compareSourceSelect = document.getElementById('compare-source-select');
-if (compareSourceSelect) {
-  compareSourceSelect.addEventListener('change', function () {
-    syncCompareBuilder(getSelectedRows());
-  });
-}
-const openCompareButton = document.getElementById('open-compare-builder');
-if (openCompareButton) {
-  openCompareButton.addEventListener('click', function () {
-    const panel = document.getElementById('compare-builder-panel');
-    if (!panel) {
+    if (countEl) {
+      countEl.textContent = String(selectedEntries.length);
+    }
+    if (bulkBar) {
+      bulkBar.hidden = selectedEntries.length === 0;
+    }
+    if (previewEl) {
+      previewEl.innerHTML = '';
+      selectedEntries.slice(0, 5).forEach(([, payload]) => {
+        const chip = document.createElement('span');
+        chip.className = 'meta-chip';
+        chip.textContent = payload.label;
+        previewEl.appendChild(chip);
+      });
+      if (selectedEntries.length > 5) {
+        const chip = document.createElement('span');
+        chip.className = 'meta-chip';
+        chip.textContent = '+' + String(selectedEntries.length - 5) + ' more';
+        previewEl.appendChild(chip);
+      }
+    }
+    if (compareToggle) {
+      compareToggle.disabled = selectedEntries.length < 2;
+    }
+    if (exportButton) {
+      exportButton.disabled = selectedEntries.length === 0;
+    }
+    syncHiddenInputs('selection-hidden-inputs');
+    syncHiddenInputs('filter-selection-inputs');
+    syncCompareBuilder();
+  }
+
+  function setVisibleCheckboxState(row, state) {
+    const checkbox = row.querySelector('.node-selector');
+    const nodeId = row.dataset.nodeId;
+    if (!checkbox || !nodeId) {
       return;
     }
-    panel.hidden = false;
-    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    checkbox.checked = state;
+    if (state) {
+      selectedState.set(nodeId, selectionPayloadForRow(row));
+    } else {
+      selectedState.delete(nodeId);
+    }
+  }
+
+  function toggleAllVisible(state) {
+    document.querySelectorAll('.node-table tr[data-node-id]').forEach((row) => setVisibleCheckboxState(row, state));
+    refreshSelectionState();
+  }
+
+  function clearNodeSelection() {
+    selectedState.clear();
+    document.querySelectorAll('.node-selector').forEach((checkbox) => {
+      checkbox.checked = false;
+    });
+    refreshSelectionState();
+  }
+
+  function exportSelectionCsv() {
+    const lines = ['node_label,node_name,role,status,last_seen,location'];
+    Array.from(selectedState.values()).forEach((payload) => {
+      const cells = [payload.label, payload.name, payload.role, payload.status, payload.lastSeen, payload.location]
+        .map((value) => '"' + String(value).replaceAll('"', '""') + '"');
+      lines.push(cells.join(','));
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'meshonator-selection.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  document.querySelectorAll('.node-table tr[data-node-id]').forEach((row) => {
+    const checkbox = row.querySelector('.node-selector');
+    const nodeId = row.dataset.nodeId;
+    if (!checkbox || !nodeId) {
+      return;
+    }
+    checkbox.checked = selectedState.has(nodeId);
+    checkbox.addEventListener('change', () => {
+      setVisibleCheckboxState(row, checkbox.checked);
+      refreshSelectionState();
+    });
   });
-}
-const exportButton = document.getElementById('export-selection-button');
-if (exportButton) {
-  exportButton.addEventListener('click', exportSelectedRows);
-}
-document.querySelectorAll('#compare-form input, #compare-form select').forEach(function (el) {
-  el.addEventListener('change', function () {
-    syncCompareBuilder(getSelectedRows());
-  });
-});
-refreshSelectionState();
+
+  const compareToggleButton = document.getElementById('compare-toggle-button');
+  const comparePanel = document.getElementById('compare-builder-panel');
+  if (compareToggleButton && comparePanel) {
+    compareToggleButton.addEventListener('click', () => {
+      comparePanel.hidden = !comparePanel.hidden;
+    });
+  }
+
+  const compareSourceSelect = document.getElementById('compare-source-select');
+  if (compareSourceSelect) {
+    compareSourceSelect.addEventListener('change', syncCompareBuilder);
+  }
+
+  const exportButton = document.getElementById('export-selection-button');
+  if (exportButton) {
+    exportButton.addEventListener('click', exportSelectionCsv);
+  }
+
+  refreshSelectionState();
 </script>
-</section>
 {% endblock %}

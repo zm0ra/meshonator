@@ -1,447 +1,469 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="page-shell">
-{% if ui_message %}<section class="panel-card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
-{% if ui_error %}<section class="panel-card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
+  {% if ui_message %}<section class="status-banner panel-card status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+  {% if ui_error %}<section class="status-banner panel-card status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
-<header class="page-hero page-hero-slate">
-  <div>
-    <p class="eyebrow">Batch configure</p>
-    <h1>Review first, then queue</h1>
-    <p class="page-summary">This flow is separated from the inventory table on purpose. Step 1 confirms targets, Step 2 defines the change set, and Step 3 shows the queued intent before anything runs.</p>
-  </div>
-  <div class="hero-metrics">
-    <article class="hero-metric">
-      <span>Selected nodes</span>
-      <strong>{{ selected_nodes|length }}</strong>
-    </article>
-    <article class="hero-metric">
-      <span>Providers</span>
-      <strong>{{ selected_nodes | map(attribute='provider') | unique | list | length }}</strong>
-    </article>
-    <article class="hero-metric">
-      <span>Clone sources</span>
-      <strong>{{ all_nodes|length }}</strong>
-    </article>
-  </div>
-</header>
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Change and review</p>
+      <h1>Batch configure</h1>
+      <p class="page-summary">Select targets, define only the sections that should change, then review impact before queueing.</p>
+    </div>
+    <div class="page-actions">
+      <span class="meta-chip">{{ selected_nodes|length }} selected</span>
+      <span class="status-pill status-pill-success">{{ selected_nodes | selectattr('reachable') | list | length }} online</span>
+      <span class="status-pill status-pill-warning">{{ selected_nodes | rejectattr('reachable') | list | length }} offline</span>
+    </div>
+  </header>
 
-<form method="post" action="/ui/nodes/batch-configure" id="batch-configure-wizard" class="page-shell">
-  {% for node_id in selected_node_ids %}
-  <input type="hidden" name="selected_node_ids" value="{{ node_id }}" />
-  {% endfor %}
+  <form method="post" action="/ui/nodes/batch-configure" id="batch-configure-wizard" class="page-shell">
+    <div id="batch-selected-node-inputs"></div>
 
-  <section class="step-layout">
-    <article class="panel-card step-card">
+    <section class="step-layout">
+      <article class="panel-card step-card">
+        <div class="section-header compact-header">
+          <div>
+            <p class="eyebrow">Step 1</p>
+            <h2>Targets</h2>
+          </div>
+          <a href="/nodes" class="ghost-link">Back to nodes</a>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table data-table-compact" id="batch-target-table">
+            <tr><th>Node</th><th>Status</th><th>Last seen</th><th>Remove</th></tr>
+            {% for node in selected_nodes %}
+            <tr data-selected-node-id="{{ node.id }}" data-node-label="{{ node_operator_label(node) }}" data-node-status="{{ 'online' if node.reachable else 'offline' }}">
+              <td>
+                <div class="node-identity">
+                  <a href="/nodes/{{ node.id }}" class="node-link-compact">{{ node_identity(node) }}</a>
+                  <span class="table-secondary">{{ node_display_name(node) }}</span>
+                </div>
+              </td>
+              <td><span class="status-pill status-pill-{{ 'success' if node.reachable else 'warning' }}">{{ 'online' if node.reachable else 'offline' }}</span></td>
+              <td><span title="{{ exact_timestamp(node.last_seen) }}">{{ relative_timestamp(node.last_seen) }}</span></td>
+              <td><button type="button" class="ghost-button-dark remove-target-button">Remove</button></td>
+            </tr>
+            {% endfor %}
+          </table>
+        </div>
+      </article>
+
+      <article class="panel-card step-card">
+        <div class="section-header compact-header">
+          <div>
+            <p class="eyebrow">Step 2</p>
+            <h2>Change set</h2>
+          </div>
+        </div>
+        <div class="step-stack">
+          <section class="form-section" data-section="identity">
+            <div class="section-toggle-row">
+              <div><h3>Identity</h3><p class="table-secondary">Role and Meshonator pin state.</p></div>
+              <label><input type="checkbox" data-section-toggle="identity" /> Enable</label>
+            </div>
+            <div class="grid two section-body is-disabled" data-section-body="identity">
+              <label>Role override
+                <input type="text" name="role_override" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" disabled />
+              </label>
+              <label>Pin state
+                <select name="favorite_state" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Pin selected nodes</option>
+                  <option value="false">Unpin selected nodes</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section" data-section="radio">
+            <div class="section-toggle-row">
+              <div><h3>Radio</h3><p class="table-secondary">Primary channel and LoRa baseline.</p></div>
+              <label><input type="checkbox" data-section-toggle="radio" /> Enable</label>
+            </div>
+            <div class="grid two section-body is-disabled" data-section-body="radio">
+              <label>Primary channel position precision
+                <input type="number" min="0" max="32" name="primary_position_precision" placeholder="13" disabled />
+              </label>
+              <label>Primary uplink
+                <select name="primary_uplink_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>Primary downlink
+                <select name="primary_downlink_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>LoRa hop limit
+                <input type="number" min="0" name="lora_hop_limit" placeholder="7" disabled />
+              </label>
+              <label>LoRa TX power
+                <input type="number" min="0" name="lora_tx_power" placeholder="27" disabled />
+              </label>
+              <label>LoRa modem preset
+                <input type="text" name="lora_modem_preset" placeholder="MEDIUM_FAST" disabled />
+              </label>
+              <label>LoRa region
+                <input type="text" name="lora_region" placeholder="EU_868" disabled />
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section" data-section="telemetry">
+            <div class="section-toggle-row">
+              <div><h3>Telemetry</h3><p class="table-secondary">Intervals and enablement for measurement flows.</p></div>
+              <label><input type="checkbox" data-section-toggle="telemetry" /> Enable</label>
+            </div>
+            <div class="grid two section-body is-disabled" data-section-body="telemetry">
+              <label>Device interval
+                <input type="number" min="0" name="telemetry_device_update_interval" placeholder="300" disabled />
+              </label>
+              <label>Device telemetry
+                <select name="telemetry_device_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>Environment interval
+                <input type="number" min="0" name="telemetry_environment_update_interval" placeholder="300" disabled />
+              </label>
+              <label>Environment telemetry
+                <select name="telemetry_environment_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>Air quality interval
+                <input type="number" min="0" name="telemetry_air_quality_interval" placeholder="300" disabled />
+              </label>
+              <label>Air quality telemetry
+                <select name="telemetry_air_quality_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>Power interval
+                <input type="number" min="0" name="telemetry_power_update_interval" placeholder="300" disabled />
+              </label>
+              <label>Power telemetry
+                <select name="telemetry_power_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>Health interval
+                <input type="number" min="0" name="telemetry_health_update_interval" placeholder="300" disabled />
+              </label>
+              <label>Health telemetry
+                <select name="telemetry_health_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section" data-section="mqtt">
+            <div class="section-toggle-row">
+              <div><h3>MQTT</h3><p class="table-secondary">Broker, root, and feature flags.</p></div>
+              <label><input type="checkbox" data-section-toggle="mqtt" /> Enable</label>
+            </div>
+            <div class="grid two section-body is-disabled" data-section-body="mqtt">
+              <label>Server
+                <input type="text" name="mqtt_address" placeholder="172.30.250.10" disabled />
+              </label>
+              <label>Topic root
+                <input type="text" name="mqtt_root" placeholder="msh/EU_868" disabled />
+              </label>
+              <label>Username
+                <input type="text" name="mqtt_username" placeholder="mt" disabled />
+              </label>
+              <label>Password
+                <input type="text" name="mqtt_password" placeholder="mt" disabled />
+              </label>
+              <label>MQTT enabled
+                <select name="mqtt_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>Encryption
+                <select name="mqtt_encryption_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>JSON output
+                <select name="mqtt_json_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+              <label>Map reporting
+                <select name="mqtt_map_reporting_enabled" disabled>
+                  <option value="keep">Not configured</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section" data-section="location">
+            <div class="section-toggle-row">
+              <div><h3>Location</h3><p class="table-secondary">Spread selected nodes around a reviewed center point.</p></div>
+              <label><input type="checkbox" data-section-toggle="location" /> Enable</label>
+            </div>
+            <div class="grid two section-body is-disabled" data-section-body="location">
+              <label>Center latitude
+                <input type="number" step="any" name="center_latitude" placeholder="53.4511616" disabled />
+              </label>
+              <label>Center longitude
+                <input type="number" step="any" name="center_longitude" placeholder="14.5489920" disabled />
+              </label>
+              <label>Center altitude
+                <input type="number" step="any" name="center_altitude" placeholder="30" disabled />
+              </label>
+              <label>Spread step in meters
+                <input type="number" min="0" name="spread_step_m" value="50" disabled />
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section" data-section="routing">
+            <div class="section-toggle-row">
+              <div><h3>Routing</h3><p class="table-secondary">Fleet routing services and protocol posture.</p></div>
+              <label><input type="checkbox" data-section-toggle="routing" /> Enable</label>
+            </div>
+            <div class="grid two section-body is-disabled" data-section-body="routing">
+              <label>Syslog server
+                <input type="text" name="network_rsyslog_server" placeholder="172.30.103.2" disabled />
+              </label>
+              <label>Enabled protocols mask
+                <input type="number" min="0" name="network_enabled_protocols" placeholder="1" disabled />
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section" data-section="nodedb">
+            <div class="section-toggle-row">
+              <div><h3>NodeDB</h3><p class="table-secondary">Reviewed NodeDB routing-favorites mutation for the selected nodes only.</p></div>
+              <label><input type="checkbox" data-section-toggle="nodedb" /> Enable</label>
+            </div>
+            <div class="grid two section-body is-disabled" data-section-body="nodedb">
+              <label>Action
+                <select name="nodedb_action" disabled>
+                  <option value="">Choose action</option>
+                  <option value="set_favorite">Set favorite node</option>
+                  <option value="remove_favorite">Remove favorite node</option>
+                  <option value="remove_node">Remove node from NodeDB</option>
+                </select>
+              </label>
+              <label>Source max hops
+                <input type="number" min="0" name="nodedb_source_max_hops" value="0" disabled />
+              </label>
+              <label>Allowed roles
+                <textarea name="nodedb_allowed_roles_text" rows="4" disabled>ROUTER
+ROUTER_LATE
+CLIENT_BASE</textarea>
+              </label>
+            </div>
+          </section>
+
+          <details class="form-section">
+            <summary>Advanced JSON patches</summary>
+            <div class="grid two mt-1">
+              <label>Local config patch
+                <textarea name="local_config_patch_json" rows="5" placeholder='{"position":{"gpsUpdateInterval":120}}'></textarea>
+              </label>
+              <label>Module config patch
+                <textarea name="module_config_patch_json" rows="5" placeholder='{"telemetry":{"deviceUpdateInterval":300}}'></textarea>
+              </label>
+              <label>Channels patch
+                <textarea name="channels_patch_json" rows="5" placeholder='[{"index":0,"moduleSettings":{"positionPrecision":13}}]'></textarea>
+              </label>
+            </div>
+          </details>
+        </div>
+      </article>
+    </section>
+
+    <section class="review-panel">
       <div class="section-header compact-header">
         <div>
-          <p class="eyebrow">Step 1</p>
-          <h2>Confirm target nodes</h2>
-        </div>
-        <a href="/nodes">Back to inventory</a>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table data-table-compact">
-          <tr><th>Node</th><th>Provider</th><th>Role</th><th>Status</th><th>Last Seen</th></tr>
-          {% for node in selected_nodes %}
-          <tr>
-            <td><a href="/nodes/{{ node.id }}">{{ node.short_name or node.provider_node_id }}</a><div class="muted">{{ node.provider_node_id }}</div></td>
-            <td>{{ node.provider }}</td>
-            <td>{{ node.role or '-' }}</td>
-            <td><span class="status-pill status-pill-{{ 'success' if node.reachable else 'danger' }}">{{ 'online' if node.reachable else 'offline' }}</span></td>
-            <td>{{ node.last_seen }}</td>
-          </tr>
-          {% endfor %}
-        </table>
-      </div>
-    </article>
-
-    <article class="panel-card step-card">
-      <div class="section-header compact-header">
-        <div>
-          <p class="eyebrow">Step 2</p>
-          <h2>Define the change set</h2>
+          <p class="eyebrow">Step 3</p>
+          <h2>Review and queue</h2>
         </div>
       </div>
-      <div class="step-stack">
-        <section class="form-section" data-section="clone">
-          <div class="section-toggle-row">
-            <div>
-              <h3>Clone from a source node</h3>
-              <p class="muted">Reuse reviewed config sections instead of building every patch manually.</p>
-            </div>
-            <label class="compact-toggle"><input type="checkbox" data-section-toggle="clone" /> Enable</label>
-          </div>
-          <div class="grid two section-body" data-section-body="clone">
-            <label>Source node
-              <select name="clone_source_node_id" disabled>
-                <option value="">Choose source node</option>
-                {% for node in all_nodes %}
-                <option value="{{ node.id }}">{{ node.provider }} :: {{ node.short_name or node.provider_node_id }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <div class="option-grid">
-              <label><input type="checkbox" name="clone_local_config" value="true" disabled /> Local config</label>
-              <label><input type="checkbox" name="clone_module_config" value="true" disabled /> Module config</label>
-              <label><input type="checkbox" name="clone_channels" value="true" disabled /> Channels</label>
-              <label><input type="checkbox" name="clone_role" value="true" disabled /> Role</label>
-              <label><input type="checkbox" name="clone_favorite" value="true" disabled /> Pinned state</label>
-            </div>
-          </div>
-        </section>
-
-        <section class="form-section" data-section="identity">
-          <div class="section-toggle-row">
-            <div>
-              <h3>Identity and posture</h3>
-              <p class="muted">Operator-safe overrides for role and Meshonator pin state.</p>
-            </div>
-            <label class="compact-toggle"><input type="checkbox" data-section-toggle="identity" /> Enable</label>
-          </div>
-          <div class="grid two section-body" data-section-body="identity">
-            <label>Role override
-              <input type="text" name="role_override" placeholder="CLIENT / ROUTER / ROUTER_LATE / CLIENT_BASE" disabled />
-            </label>
-            <label>Pinned state
-              <select name="favorite_state" disabled>
-                <option value="">No change</option>
-                <option value="true">Pin selected nodes</option>
-                <option value="false">Unpin selected nodes</option>
-              </select>
-            </label>
-          </div>
-        </section>
-
-        <section class="form-section" data-section="radio">
-          <div class="section-toggle-row">
-            <div>
-              <h3>Radio and routing baseline</h3>
-              <p class="muted">Channel defaults and network services that should be consistent across the selection.</p>
-            </div>
-            <label class="compact-toggle"><input type="checkbox" data-section-toggle="radio" /> Enable</label>
-          </div>
-          <div class="grid two section-body" data-section-body="radio">
-            <label>Primary channel position precision
-              <input type="number" min="0" max="32" name="primary_position_precision" placeholder="13" disabled />
-            </label>
-            <label>Primary uplink
-              <select name="primary_uplink_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>Primary downlink
-              <select name="primary_downlink_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>Rsyslog server
-              <input type="text" name="network_rsyslog_server" placeholder="172.30.103.2" disabled />
-            </label>
-            <label>Enabled protocols mask
-              <input type="number" min="0" name="network_enabled_protocols" placeholder="1" disabled />
-            </label>
-          </div>
-        </section>
-
-        <section class="form-section" data-section="telemetry">
-          <div class="section-toggle-row">
-            <div>
-              <h3>Telemetry policy</h3>
-              <p class="muted">Set intervals and enablement only for the telemetry channels you actually want to standardize.</p>
-            </div>
-            <label class="compact-toggle"><input type="checkbox" data-section-toggle="telemetry" /> Enable</label>
-          </div>
-          <div class="grid two section-body" data-section-body="telemetry">
-            <label>Device interval
-              <input type="number" min="0" name="telemetry_device_update_interval" placeholder="300" disabled />
-            </label>
-            <label>Device telemetry
-              <select name="telemetry_device_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>Environment interval
-              <input type="number" min="0" name="telemetry_environment_update_interval" placeholder="300" disabled />
-            </label>
-            <label>Environment telemetry
-              <select name="telemetry_environment_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>Air quality interval
-              <input type="number" min="0" name="telemetry_air_quality_interval" placeholder="300" disabled />
-            </label>
-            <label>Air quality telemetry
-              <select name="telemetry_air_quality_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>Power interval
-              <input type="number" min="0" name="telemetry_power_update_interval" placeholder="300" disabled />
-            </label>
-            <label>Power telemetry
-              <select name="telemetry_power_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>Health interval
-              <input type="number" min="0" name="telemetry_health_update_interval" placeholder="300" disabled />
-            </label>
-            <label>Health telemetry
-              <select name="telemetry_health_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-          </div>
-        </section>
-
-        <section class="form-section" data-section="mqtt">
-          <div class="section-toggle-row">
-            <div>
-              <h3>MQTT baseline</h3>
-              <p class="muted">Standardize broker address, root, and critical MQTT feature flags for the selected nodes.</p>
-            </div>
-            <label class="compact-toggle"><input type="checkbox" data-section-toggle="mqtt" /> Enable</label>
-          </div>
-          <div class="grid two section-body" data-section-body="mqtt">
-            <label>MQTT address
-              <input type="text" name="mqtt_address" placeholder="172.30.250.10" disabled />
-            </label>
-            <label>MQTT root
-              <input type="text" name="mqtt_root" placeholder="msh/EU_868" disabled />
-            </label>
-            <label>MQTT username
-              <input type="text" name="mqtt_username" placeholder="mt" disabled />
-            </label>
-            <label>MQTT password
-              <input type="text" name="mqtt_password" placeholder="mt" disabled />
-            </label>
-            <label>MQTT enabled
-              <select name="mqtt_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>Encryption enabled
-              <select name="mqtt_encryption_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>JSON enabled
-              <select name="mqtt_json_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>Map reporting
-              <select name="mqtt_map_reporting_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>Proxy to client
-              <select name="mqtt_proxy_to_client_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-            <label>TLS enabled
-              <select name="mqtt_tls_enabled" disabled>
-                <option value="">No change</option>
-                <option value="true">Enable</option>
-                <option value="false">Disable</option>
-              </select>
-            </label>
-          </div>
-        </section>
-
-        <section class="form-section" data-section="location">
-          <div class="section-toggle-row">
-            <div>
-              <h3>Location spread</h3>
-              <p class="muted">Place the selection around one center point. Use only for deliberate deployment layout changes.</p>
-            </div>
-            <label class="compact-toggle"><input type="checkbox" data-section-toggle="location" /> Enable</label>
-          </div>
-          <div class="grid two section-body" data-section-body="location">
-            <label>Center latitude
-              <input type="number" step="any" name="center_latitude" placeholder="53.4511616" disabled />
-            </label>
-            <label>Center longitude
-              <input type="number" step="any" name="center_longitude" placeholder="14.5489920" disabled />
-            </label>
-            <label>Center altitude
-              <input type="number" step="any" name="center_altitude" placeholder="30" disabled />
-            </label>
-            <label>Spread step in meters
-              <input type="number" min="0" step="1" name="spread_step_m" value="50" disabled />
-            </label>
-          </div>
-        </section>
-
-        <details class="form-section">
-          <summary>Advanced JSON patches</summary>
-          <p class="muted">Keep advanced JSON off the default path. Use it only when the structured controls cannot express the change.</p>
-          <div class="grid two mt-1">
-            <label>Local config patch
-              <textarea name="local_config_patch_json" rows="5" placeholder='{"position":{"gpsUpdateInterval":120}}'></textarea>
-            </label>
-            <label>Module config patch
-              <textarea name="module_config_patch_json" rows="5" placeholder='{"telemetry":{"deviceUpdateInterval":300}}'></textarea>
-            </label>
-            <label>Channels patch
-              <textarea name="channels_patch_json" rows="5" placeholder='[{"index":0,"moduleSettings":{"positionPrecision":13}}]'></textarea>
-            </label>
-          </div>
-        </details>
+      <div class="status-strip">
+        <span class="meta-chip"><span id="review-target-count">{{ selected_nodes|length }}</span> targets</span>
+        <span class="status-pill status-pill-success"><span id="review-online-count">{{ selected_nodes | selectattr('reachable') | list | length }}</span> online</span>
+        <span class="status-pill status-pill-warning"><span id="review-offline-count">{{ selected_nodes | rejectattr('reachable') | list | length }}</span> offline</span>
       </div>
-    </article>
-  </section>
-
-  <section class="panel-card review-panel">
-    <div class="section-header compact-header">
-      <div>
-        <p class="eyebrow">Step 3</p>
-        <h2>Review and queue</h2>
+      <div id="batch-review-summary" class="selected-chip-list"></div>
+      <ul id="batch-review-list" class="review-list">
+        <li class="muted">Enable at least one change section to generate the review summary.</li>
+      </ul>
+      <div id="batch-risk-warning" class="status-banner status-banner-error hidden"><p class="error">This review includes offline nodes or NodeDB mutation. Verify the target list before queueing.</p></div>
+      <div class="button-row">
+        <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+        <label><input type="checkbox" name="confirm_batch_changes" value="true" id="wizard-confirm-checkbox" /> I reviewed the targets and change summary above.</label>
       </div>
-    </div>
-    <p class="muted">The queue button stays locked until you confirm the target count and at least one change.</p>
-    <ul class="subtle-list" id="batch-review-list">
-      <li class="muted">Enable one or more sections to generate the review summary.</li>
-    </ul>
-    <div class="grid two">
-      <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
-      <label><input type="checkbox" name="confirm_batch_changes" value="true" id="wizard-confirm-checkbox" /> I reviewed the targets and change summary above.</label>
-    </div>
-    <button type="submit" id="wizard-submit-button" disabled>Queue batch node changes</button>
-  </section>
-</form>
+      <button type="submit" id="wizard-submit-button" disabled>Queue reviewed change</button>
+    </section>
+  </form>
+</section>
 
 <script>
-function setSectionState(toggle) {
-  const sectionName = toggle.getAttribute('data-section-toggle');
-  const body = document.querySelector('[data-section-body="' + sectionName + '"]');
-  if (!body) {
-    return;
+  function selectedRows() {
+    return Array.from(document.querySelectorAll('#batch-target-table tr[data-selected-node-id]'));
   }
-  body.querySelectorAll('input, select, textarea').forEach(function (field) {
-    field.disabled = !toggle.checked;
-  });
-}
 
-function collectReviewItems() {
-  const form = document.getElementById('batch-configure-wizard');
-  if (!form) {
-    return [];
+  function syncSelectedNodeInputs() {
+    const container = document.getElementById('batch-selected-node-inputs');
+    if (!container) {
+      return;
+    }
+    container.innerHTML = '';
+    selectedRows().forEach((row) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'selected_node_ids';
+      input.value = row.dataset.selectedNodeId || '';
+      container.appendChild(input);
+    });
   }
-  const items = [];
-  const valueOf = function (name) {
-    const field = form.querySelector('[name="' + name + '"]');
-    if (!field || field.disabled) {
+
+  function setSectionState(toggle) {
+    const sectionName = toggle.getAttribute('data-section-toggle');
+    const body = document.querySelector('[data-section-body="' + sectionName + '"]');
+    if (!body) {
+      return;
+    }
+    body.classList.toggle('is-disabled', !toggle.checked);
+    body.querySelectorAll('input, select, textarea').forEach((field) => {
+      field.disabled = !toggle.checked;
+    });
+  }
+
+  function describeField(field) {
+    const label = field.closest('label');
+    const labelText = label ? label.textContent.replace(/\s+/g, ' ').trim() : field.name;
+    const value = field.type === 'checkbox' ? (field.checked ? 'Enabled' : '') : field.value;
+    if (!value || value === 'keep') {
       return '';
     }
-    if (field.type === 'checkbox') {
-      return field.checked ? 'true' : '';
-    }
-    return (field.value || '').trim();
-  };
+    return labelText + ': ' + value;
+  }
 
-  const cloneSource = valueOf('clone_source_node_id');
-  if (cloneSource) {
-    const selectedParts = [];
-    [['clone_local_config', 'local config'], ['clone_module_config', 'module config'], ['clone_channels', 'channels'], ['clone_role', 'role'], ['clone_favorite', 'pinned state']].forEach(function (pair) {
-      if (valueOf(pair[0])) {
-        selectedParts.push(pair[1]);
+  function refreshReview() {
+    const summary = document.getElementById('batch-review-summary');
+    const reviewList = document.getElementById('batch-review-list');
+    const risk = document.getElementById('batch-risk-warning');
+    const confirmCheckbox = document.getElementById('wizard-confirm-checkbox');
+    const submitButton = document.getElementById('wizard-submit-button');
+    const targetCount = selectedRows().length;
+    const onlineCount = selectedRows().filter((row) => row.dataset.nodeStatus === 'online').length;
+    const offlineCount = targetCount - onlineCount;
+    const enabledSections = Array.from(document.querySelectorAll('[data-section-toggle]')).filter((toggle) => toggle.checked);
+    const reviewItems = [];
+    let nodeDbEnabled = false;
+
+    enabledSections.forEach((toggle) => {
+      const sectionName = toggle.getAttribute('data-section-toggle');
+      if (sectionName === 'nodedb') {
+        nodeDbEnabled = true;
+      }
+      const body = document.querySelector('[data-section-body="' + sectionName + '"]');
+      if (!body) {
+        return;
+      }
+      body.querySelectorAll('input, select, textarea').forEach((field) => {
+        const line = describeField(field);
+        if (line) {
+          reviewItems.push(line);
+        }
+      });
+    });
+
+    document.getElementById('review-target-count').textContent = String(targetCount);
+    document.getElementById('review-online-count').textContent = String(onlineCount);
+    document.getElementById('review-offline-count').textContent = String(offlineCount);
+
+    if (summary) {
+      summary.innerHTML = '';
+      selectedRows().slice(0, 5).forEach((row) => {
+        const chip = document.createElement('span');
+        chip.className = 'meta-chip';
+        chip.textContent = row.dataset.nodeLabel || 'Node';
+        summary.appendChild(chip);
+      });
+      if (targetCount > 5) {
+        const chip = document.createElement('span');
+        chip.className = 'meta-chip';
+        chip.textContent = '+' + String(targetCount - 5) + ' more';
+        summary.appendChild(chip);
+      }
+    }
+
+    if (reviewList) {
+      reviewList.innerHTML = '';
+      if (!reviewItems.length) {
+        reviewList.innerHTML = '<li class="muted">Enable at least one change section to generate the review summary.</li>';
+      } else {
+        reviewItems.forEach((item) => {
+          const line = document.createElement('li');
+          line.textContent = item;
+          reviewList.appendChild(line);
+        });
+      }
+    }
+
+    if (risk) {
+      risk.classList.toggle('hidden', !(offlineCount > 0 || nodeDbEnabled));
+    }
+
+    submitButton.disabled = !(targetCount > 0 && reviewItems.length > 0 && confirmCheckbox && confirmCheckbox.checked);
+  }
+
+  document.querySelectorAll('[data-section-toggle]').forEach((toggle) => {
+    setSectionState(toggle);
+    toggle.addEventListener('change', () => {
+      setSectionState(toggle);
+      refreshReview();
+    });
+  });
+
+  document.querySelectorAll('#batch-configure-wizard input, #batch-configure-wizard select, #batch-configure-wizard textarea').forEach((field) => {
+    field.addEventListener('input', refreshReview);
+    field.addEventListener('change', refreshReview);
+  });
+
+  document.querySelectorAll('.remove-target-button').forEach((button) => {
+    button.addEventListener('click', () => {
+      const row = button.closest('tr[data-selected-node-id]');
+      if (row) {
+        row.remove();
+        syncSelectedNodeInputs();
+        refreshReview();
       }
     });
-    items.push('Clone from source node: ' + (selectedParts.length ? selectedParts.join(', ') : 'no clone sections selected'));
-  }
-  if (valueOf('role_override')) {
-    items.push('Set role override to ' + valueOf('role_override').toUpperCase());
-  }
-  if (valueOf('favorite_state')) {
-    items.push(valueOf('favorite_state') === 'true' ? 'Pin selected nodes in Meshonator' : 'Unpin selected nodes in Meshonator');
-  }
-  if (valueOf('primary_position_precision') || valueOf('primary_uplink_enabled') || valueOf('primary_downlink_enabled') || valueOf('network_rsyslog_server') || valueOf('network_enabled_protocols')) {
-    items.push('Apply radio and routing baseline changes');
-  }
-  if (valueOf('telemetry_device_update_interval') || valueOf('telemetry_environment_update_interval') || valueOf('telemetry_air_quality_interval') || valueOf('telemetry_power_update_interval') || valueOf('telemetry_health_update_interval') || valueOf('telemetry_device_enabled') || valueOf('telemetry_environment_enabled') || valueOf('telemetry_air_quality_enabled') || valueOf('telemetry_power_enabled') || valueOf('telemetry_health_enabled')) {
-    items.push('Apply telemetry policy changes');
-  }
-  if (valueOf('mqtt_address') || valueOf('mqtt_root') || valueOf('mqtt_username') || valueOf('mqtt_password') || valueOf('mqtt_enabled') || valueOf('mqtt_encryption_enabled') || valueOf('mqtt_json_enabled') || valueOf('mqtt_map_reporting_enabled') || valueOf('mqtt_proxy_to_client_enabled') || valueOf('mqtt_tls_enabled')) {
-    items.push('Apply MQTT baseline changes');
-  }
-  if (valueOf('center_latitude') && valueOf('center_longitude')) {
-    items.push('Apply location spread around ' + valueOf('center_latitude') + ', ' + valueOf('center_longitude'));
-  }
-  if (valueOf('local_config_patch_json') || valueOf('module_config_patch_json') || valueOf('channels_patch_json')) {
-    items.push('Apply advanced JSON patch content');
-  }
-  if (valueOf('dry_run')) {
-    items.push('Queue as dry run');
-  }
-  return items;
-}
-
-function refreshWizardSummary() {
-  const reviewList = document.getElementById('batch-review-list');
-  const confirmCheckbox = document.getElementById('wizard-confirm-checkbox');
-  const submitButton = document.getElementById('wizard-submit-button');
-  if (!reviewList || !confirmCheckbox || !submitButton) {
-    return;
-  }
-  const items = collectReviewItems();
-  reviewList.innerHTML = '';
-  if (!items.length) {
-    const item = document.createElement('li');
-    item.className = 'muted';
-    item.textContent = 'Enable one or more sections to generate the review summary.';
-    reviewList.appendChild(item);
-  } else {
-    items.forEach(function (text) {
-      const item = document.createElement('li');
-      item.textContent = text;
-      reviewList.appendChild(item);
-    });
-  }
-  submitButton.disabled = items.length === 0 || !confirmCheckbox.checked;
-}
-
-document.querySelectorAll('[data-section-toggle]').forEach(function (toggle) {
-  setSectionState(toggle);
-  toggle.addEventListener('change', function () {
-    setSectionState(toggle);
-    refreshWizardSummary();
   });
-});
 
-document.querySelectorAll('#batch-configure-wizard input, #batch-configure-wizard select, #batch-configure-wizard textarea').forEach(function (field) {
-  field.addEventListener('input', refreshWizardSummary);
-  field.addEventListener('change', refreshWizardSummary);
-});
-
-refreshWizardSummary();
+  syncSelectedNodeInputs();
+  refreshReview();
 </script>
-</section>
 {% endblock %}

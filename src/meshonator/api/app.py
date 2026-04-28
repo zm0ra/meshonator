@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -215,8 +215,218 @@ def _format_dashboard_timestamp(value: datetime | None) -> str:
     return value.astimezone(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
 
 
+def _normalize_timestamp(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _format_exact_timestamp(value: datetime | None) -> str:
+    normalized = _normalize_timestamp(value)
+    if normalized is None:
+        return "Never"
+    return normalized.strftime("%d %b %Y, %H:%M UTC")
+
+
+def _format_relative_timestamp(value: datetime | None) -> str:
+    normalized = _normalize_timestamp(value)
+    if normalized is None:
+        return "Never"
+    delta = datetime.now(timezone.utc) - normalized
+    seconds = int(delta.total_seconds())
+    if seconds < 0:
+        seconds = 0
+    if seconds < 60:
+        return "just now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}h ago"
+    days = hours // 24
+    if days < 7:
+        return f"{days}d ago"
+    return _format_exact_timestamp(normalized)
+
+
+def _format_duration(started_at: datetime | None, finished_at: datetime | None) -> str:
+    started = _normalize_timestamp(started_at)
+    finished = _normalize_timestamp(finished_at) or datetime.now(timezone.utc)
+    if started is None:
+        return "-"
+    delta = max(0, int((finished - started).total_seconds()))
+    if delta < 60:
+        return f"{delta}s"
+    minutes, seconds = divmod(delta, 60)
+    if minutes < 60:
+        return f"{minutes}m {seconds}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m"
+
+
+def _node_identity(node: ManagedNodeModel) -> str:
+    short_name = str(node.short_name or "").strip()
+    short_suffix = f" ({short_name})" if short_name else ""
+    return f"{node.provider}: {node.provider_node_id}{short_suffix}"
+
+
+def _node_display_name(node: ManagedNodeModel) -> str:
+    for candidate in [node.long_name, node.short_name, node.provider_node_id]:
+        value = str(candidate or "").strip()
+        if value:
+            return value
+    return "Unnamed node"
+
+
+def _node_operator_label(node: ManagedNodeModel) -> str:
+    identity = _node_identity(node)
+    display_name = _node_display_name(node)
+    if display_name and display_name not in identity:
+        return f"{identity} - {display_name}"
+    return identity
+
+
 def _node_label(node: ManagedNodeModel) -> str:
-    return node.short_name or node.long_name or node.provider_node_id
+    return _node_display_name(node)
+
+
+def _humanize_patch_path(path: str) -> str:
+    labels = {
+        "favorite": "Pin state",
+        "role": "Role override",
+        "local_config_patch.device.role": "Node role",
+        "local_config_patch.lora.hopLimit": "LoRa hop limit",
+        "local_config_patch.lora.txPower": "LoRa TX power",
+        "local_config_patch.lora.region": "LoRa region",
+        "local_config_patch.lora.modemPreset": "LoRa modem preset",
+        "local_config_patch.network.rsyslogServer": "Syslog server",
+        "local_config_patch.network.enabledProtocols": "Enabled protocols",
+        "local_config_patch.position.positionBroadcastSecs": "Position broadcast interval",
+        "local_config_patch.position.positionBroadcastSmartEnabled": "Smart position broadcast",
+        "local_config_patch.position.broadcastSmartMinimumDistance": "Smart broadcast minimum distance",
+        "local_config_patch.position.broadcastSmartMinimumIntervalSecs": "Smart broadcast minimum interval",
+        "local_config_patch.position.gpsMode": "GPS mode",
+        "local_config_patch.position.gpsUpdateInterval": "GPS update interval",
+        "local_config_patch.position.fixedPosition": "Fixed position",
+        "local_config_patch.position.positionFlags": "Position flags",
+        "module_config_patch.mqtt.address": "MQTT server",
+        "module_config_patch.mqtt.username": "MQTT username",
+        "module_config_patch.mqtt.password": "MQTT password",
+        "module_config_patch.mqtt.root": "MQTT topic root",
+        "module_config_patch.mqtt.enabled": "MQTT enabled",
+        "module_config_patch.mqtt.encryptionEnabled": "MQTT encryption",
+        "module_config_patch.mqtt.jsonEnabled": "MQTT JSON output",
+        "module_config_patch.mqtt.mapReportingEnabled": "MQTT map reporting",
+        "module_config_patch.mqtt.proxyToClientEnabled": "MQTT proxy to client",
+        "module_config_patch.mqtt.tlsEnabled": "MQTT TLS",
+        "module_config_patch.telemetry.deviceUpdateInterval": "Telemetry device interval",
+        "module_config_patch.telemetry.environmentUpdateInterval": "Telemetry environment interval",
+        "module_config_patch.telemetry.airQualityInterval": "Telemetry air quality interval",
+        "module_config_patch.telemetry.powerUpdateInterval": "Telemetry power interval",
+        "module_config_patch.telemetry.healthUpdateInterval": "Telemetry health interval",
+        "module_config_patch.telemetry.deviceTelemetryEnabled": "Device telemetry",
+        "module_config_patch.telemetry.environmentTelemetryEnabled": "Environment telemetry",
+        "module_config_patch.telemetry.airQualityEnabled": "Air quality telemetry",
+        "module_config_patch.telemetry.powerTelemetryEnabled": "Power telemetry",
+        "module_config_patch.telemetry.healthTelemetryEnabled": "Health telemetry",
+        "channels_patch": "Channel settings",
+        "channels_patch.0.settings.uplinkEnabled": "Primary channel uplink",
+        "channels_patch.0.settings.downlinkEnabled": "Primary channel downlink",
+        "channels_patch.0.moduleSettings.positionPrecision": "Primary channel position precision",
+    }
+    if path in labels:
+        return labels[path]
+    cleaned = path.replace("local_config_patch.", "").replace("module_config_patch.", "").replace("channels_patch.", "")
+    return _humanize_identifier(cleaned)
+
+
+def _collect_patch_paths(value: Any, prefix: str = "") -> list[str]:
+    if isinstance(value, dict):
+        paths: list[str] = []
+        for key, nested in value.items():
+            child_prefix = f"{prefix}.{key}" if prefix else str(key)
+            paths.extend(_collect_patch_paths(nested, child_prefix))
+        return paths
+    if isinstance(value, list):
+        if not value:
+            return []
+        paths: list[str] = []
+        for index, nested in enumerate(value):
+            child_prefix = f"{prefix}.{index}" if prefix else str(index)
+            paths.extend(_collect_patch_paths(nested, child_prefix))
+        return paths or ([prefix] if prefix else [])
+    return [prefix] if prefix else []
+
+
+def _summarize_patch_fields(base_patch: dict[str, Any]) -> list[str]:
+    seen: list[str] = []
+    for path in _collect_patch_paths(base_patch):
+        label = _humanize_patch_path(path)
+        if label not in seen:
+            seen.append(label)
+    return seen
+
+
+def _extract_job_target_ids(payload: dict[str, Any]) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    for key in ["node_ids", "destination_node_ids"]:
+        raw = payload.get(key)
+        if isinstance(raw, list):
+            return [str(value) for value in raw if str(value).strip()]
+    return []
+
+
+def _extract_job_target_count(payload: dict[str, Any], result_rows: list[JobResultModel]) -> int:
+    node_ids = _extract_job_target_ids(payload)
+    if node_ids:
+        return len(node_ids)
+    target_ids = [str(row.node_id) for row in result_rows if row.node_id is not None]
+    return len(set(target_ids))
+
+
+def _summarize_job_results(result_rows: list[JobResultModel]) -> dict[str, int]:
+    return {
+        "success": len([row for row in result_rows if row.status == "success"]),
+        "failed": len([row for row in result_rows if row.status == "failed"]),
+        "running": len([row for row in result_rows if row.status in {"pending", "running"}]),
+    }
+
+
+def _build_job_result_summary(job: JobModel, result_rows: list[JobResultModel]) -> str:
+    counts = _summarize_job_results(result_rows)
+    if counts["failed"]:
+        return f"{counts['failed']} failed, {counts['success']} succeeded"
+    if counts["running"]:
+        return f"{counts['running']} still running"
+    if counts["success"]:
+        return f"{counts['success']} succeeded"
+    if job.status == "failed":
+        return "Failed before node-level evidence was recorded"
+    if job.status in {"pending", "running"}:
+        return "Waiting for execution evidence"
+    return "No node-level evidence recorded"
+
+
+def _build_job_evidence_summary(result_rows: list[JobResultModel]) -> list[str]:
+    summaries: list[str] = []
+    for row in result_rows[:3]:
+        message = str(row.message or "").strip() or "No message"
+        if message not in summaries:
+            summaries.append(message)
+    return summaries
+
+
+templates.env.globals.update(
+    node_identity=_node_identity,
+    node_display_name=_node_display_name,
+    node_operator_label=_node_operator_label,
+    exact_timestamp=_format_exact_timestamp,
+    relative_timestamp=_format_relative_timestamp,
+)
 
 
 def _safe_dict(value: Any) -> dict[str, Any]:
@@ -379,6 +589,10 @@ def _build_fleet_baseline_patch(
     primary_position_precision: str,
     primary_uplink_enabled: str,
     primary_downlink_enabled: str,
+    lora_hop_limit: str = "",
+    lora_tx_power: str = "",
+    lora_modem_preset: str = "",
+    lora_region: str = "",
     telemetry_device_update_interval: str,
     telemetry_environment_update_interval: str,
     telemetry_air_quality_interval: str,
@@ -405,6 +619,18 @@ def _build_fleet_baseline_patch(
     local_patch: dict[str, Any] = {}
     module_patch: dict[str, Any] = {}
     channels_patch: list[dict[str, Any]] = []
+
+    lora_patch: dict[str, Any] = {}
+    if value := _parse_optional_int(lora_hop_limit):
+        lora_patch["hopLimit"] = value
+    if value := _parse_optional_int(lora_tx_power):
+        lora_patch["txPower"] = value
+    if value := _parse_optional_text(lora_modem_preset):
+        lora_patch["modemPreset"] = value
+    if value := _parse_optional_text(lora_region):
+        lora_patch["region"] = value
+    if lora_patch:
+        local_patch["lora"] = lora_patch
 
     network_patch: dict[str, Any] = {}
     if value := _parse_optional_text(network_rsyslog_server):
@@ -1569,6 +1795,10 @@ def ui_nodes_batch_configure(
     primary_position_precision: str = Form(""),
     primary_uplink_enabled: str = Form("keep"),
     primary_downlink_enabled: str = Form("keep"),
+    lora_hop_limit: str = Form(""),
+    lora_tx_power: str = Form(""),
+    lora_modem_preset: str = Form(""),
+    lora_region: str = Form(""),
     telemetry_device_update_interval: str = Form(""),
     telemetry_environment_update_interval: str = Form(""),
     telemetry_air_quality_interval: str = Form(""),
@@ -1591,6 +1821,9 @@ def ui_nodes_batch_configure(
     mqtt_tls_enabled: str = Form("keep"),
     network_rsyslog_server: str = Form(""),
     network_enabled_protocols: str = Form(""),
+    nodedb_action: str = Form(""),
+    nodedb_allowed_roles_text: str = Form("ROUTER\nROUTER_LATE\nCLIENT_BASE"),
+    nodedb_source_max_hops: int = Form(0),
     dry_run: bool = Form(False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
@@ -1599,6 +1832,9 @@ def ui_nodes_batch_configure(
         node_ids = _parse_uuid_list(selected_node_ids)
         if not node_ids:
             return RedirectResponse(url="/nodes?error=Select+at+least+one+node", status_code=303)
+        all_nodes = InventoryService(db).list_nodes()
+        nodes_by_id = {str(node.id): node for node in all_nodes if node.id is not None}
+        selected_nodes = [nodes_by_id[str(node_id)] for node_id in node_ids if str(node_id) in nodes_by_id]
         if not confirm_batch_changes:
             return RedirectResponse(
                 url="/nodes?error=Review+the+preflight+summary+and+confirm+the+batch+change+before+queueing",
@@ -1619,6 +1855,10 @@ def ui_nodes_batch_configure(
             primary_position_precision=primary_position_precision,
             primary_uplink_enabled=primary_uplink_enabled,
             primary_downlink_enabled=primary_downlink_enabled,
+            lora_hop_limit=lora_hop_limit,
+            lora_tx_power=lora_tx_power,
+            lora_modem_preset=lora_modem_preset,
+            lora_region=lora_region,
             telemetry_device_update_interval=telemetry_device_update_interval,
             telemetry_environment_update_interval=telemetry_environment_update_interval,
             telemetry_air_quality_interval=telemetry_air_quality_interval,
@@ -1678,6 +1918,57 @@ def ui_nodes_batch_configure(
             clone_payload = {}
         if location_enabled and location_payload["step_m"] <= 0 and len(node_ids) > 1:
             return RedirectResponse(url="/nodes?error=Spread+step+must+be+greater+than+0+for+multiple+nodes", status_code=303)
+
+        has_patch_changes = any(
+            [
+                base_patch.get("local_config_patch"),
+                base_patch.get("module_config_patch"),
+                base_patch.get("channels_patch"),
+                "role" in base_patch,
+                "favorite" in base_patch,
+            ]
+        )
+        has_clone_changes = bool(clone_payload)
+        has_nodedb_changes = bool(nodedb_action.strip())
+        if has_nodedb_changes and (has_patch_changes or has_clone_changes or location_enabled):
+            return RedirectResponse(
+                url="/nodes?error=NodeDB+mutation+must+be+queued+on+its+own+review+path",
+                status_code=303,
+            )
+        if not any([has_patch_changes, has_clone_changes, location_enabled, has_nodedb_changes]):
+            return RedirectResponse(url="/nodes?error=Enable+at+least+one+change+section+before+queueing", status_code=303)
+
+        if has_nodedb_changes:
+            if nodedb_action not in {"set_favorite", "remove_favorite", "remove_node"}:
+                return RedirectResponse(url="/nodes?error=Unsupported+NodeDB+action", status_code=303)
+            allowed_roles = set(_normalize_roles(nodedb_allowed_roles_text))
+            source_nodes = [
+                node for node in selected_nodes
+                if str(node.role or "").upper().strip() in allowed_roles
+            ]
+            target_node_ids = _collect_routing_favorite_targets(
+                db=db,
+                source_nodes=source_nodes,
+                allowed_roles=allowed_roles,
+                max_hops=nodedb_source_max_hops,
+            )
+            if not target_node_ids:
+                return RedirectResponse(url="/nodes?error=No+NodeDB+targets+matched+the+reviewed+selection", status_code=303)
+            job = JobsService(db).create(
+                job_type="bulk_nodedb_mutation",
+                requested_by=user.username,
+                source="ui",
+                payload={
+                    "destination_node_ids": [str(node.id) for node in selected_nodes if node.id is not None],
+                    "target_node_ids": target_node_ids,
+                    "action": nodedb_action,
+                    "exclude_self": True,
+                    "dry_run": dry_run,
+                },
+            )
+            enqueue_bulk_nodedb_job(job.id, registry)
+            message = quote_plus(f"Batch NodeDB change queued. Job ID: {job.id}")
+            return RedirectResponse(url=f"/nodes?message={message}", status_code=303)
 
         job = JobsService(db).create(
             job_type="multi_node_config_patch",
@@ -2374,7 +2665,18 @@ def groups_page(
     for group in groups:
         assigned = group_service.list_assigned_members(group.id)
         resolved = group_service.resolve_all_members(group)
-        groups_view.append({"group": group, "assigned": assigned, "resolved": resolved})
+        resolved_ids = [str(node.id) for node in resolved if node.id is not None]
+        selected_query = urlencode([("selected_node_ids", node_id) for node_id in resolved_ids])
+        groups_view.append(
+            {
+                "group": group,
+                "assigned": assigned,
+                "resolved": resolved,
+                "resolved_ids": resolved_ids,
+                "open_members_href": f"/nodes?{selected_query}" if selected_query else "/nodes",
+                "configure_members_href": f"/nodes/batch-configure?{selected_query}" if selected_query else "/nodes",
+            }
+        )
     nodes = InventoryService(db).list_nodes()
     nodes_by_id = {str(node.id): node for node in nodes}
     selected_node_ids = [value for value in request.query_params.getlist("selected_node_ids") if value]
@@ -2648,6 +2950,7 @@ def ui_group_configure(
 @app.get("/jobs", response_class=HTMLResponse)
 def jobs_page(
     request: Request,
+    status: str = "all",
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_session_user),
 ) -> HTMLResponse:
@@ -2663,6 +2966,12 @@ def jobs_page(
             or query in str(job.requested_by).lower()
             or query in str(job.source).lower()
         ]
+    if status == "running":
+        jobs = [job for job in jobs if job.status in {"pending", "running"}]
+    elif status == "failed":
+        jobs = [job for job in jobs if job.status == "failed"]
+    elif status == "success":
+        jobs = [job for job in jobs if job.status == "success"]
     results = jobs_service.list_results(limit=600)
     results_by_job: dict[str, list] = {}
     for row in results:
@@ -2670,6 +2979,37 @@ def jobs_page(
         bucket = results_by_job.setdefault(key, [])
         if len(bucket) < 30:
             bucket.append(row)
+    jobs = sorted(
+        jobs,
+        key=lambda job: (
+            0 if job.status == "failed" else 1 if job.status in {"pending", "running"} else 2,
+            _normalize_timestamp(job.created_at) or datetime.fromtimestamp(0, tz=timezone.utc),
+        ),
+        reverse=False,
+    )
+    nodes_by_id = {str(node.id): node for node in InventoryService(db).list_nodes() if node.id is not None}
+    jobs_view: list[dict[str, Any]] = []
+    for job in jobs:
+        result_rows = results_by_job.get(str(job.id), [])
+        payload = job.payload if isinstance(job.payload, dict) else {}
+        target_ids = _extract_job_target_ids(payload)
+        preview_labels = [
+            _node_operator_label(nodes_by_id[node_id])
+            for node_id in target_ids[:3]
+            if node_id in nodes_by_id
+        ]
+        jobs_view.append(
+            {
+                "job": job,
+                "result_rows": result_rows,
+                "target_count": _extract_job_target_count(payload, result_rows),
+                "result_counts": _summarize_job_results(result_rows),
+                "result_summary": _build_job_result_summary(job, result_rows),
+                "evidence_summary": _build_job_evidence_summary(result_rows),
+                "target_preview": preview_labels,
+                "duration": _format_duration(job.started_at, job.finished_at),
+            }
+        )
     auto_refresh = request.query_params.get("refresh", "on").lower() != "off"
     refresh_toggle_url = "/jobs?refresh=off" if auto_refresh else "/jobs?refresh=on"
     return templates.TemplateResponse(
@@ -2678,9 +3018,11 @@ def jobs_page(
         {
             "user": user,
             "jobs": jobs,
+            "jobs_view": jobs_view,
             "results_by_job": results_by_job,
             "auto_refresh": auto_refresh,
             "refresh_toggle_url": refresh_toggle_url,
+            "filters": {"status": status, "q": query},
             "job_counts": {
                 "running": len([job for job in jobs if job.status in {"pending", "running"}]),
                 "failed": len([job for job in jobs if job.status == "failed"]),
@@ -2707,7 +3049,28 @@ def audit_page(
             or query in str(entry.provider or "").lower()
             or query in str(entry.node_id or "").lower()
         ]
-    return templates.TemplateResponse(request, "audit.html", {"user": user, "entries": entries})
+    nodes_by_id = {str(node.id): node for node in InventoryService(db).list_nodes() if node.id is not None}
+    entries_view = []
+    for entry in entries:
+        node = nodes_by_id.get(str(entry.node_id)) if entry.node_id is not None else None
+        target_label = _node_operator_label(node) if node is not None else (entry.provider or "-")
+        meta_json = entry.meta_json if isinstance(entry.meta_json, dict) else {}
+        result_label = (
+            meta_json.get("status")
+            or ("Assigned" if meta_json.get("assigned_count") else None)
+            or ("Recorded" if entry.after_state or entry.before_state else None)
+            or "Recorded"
+        )
+        entries_view.append(
+            {
+                "entry": entry,
+                "relative_time": _format_relative_timestamp(entry.created_at),
+                "exact_time": _format_exact_timestamp(entry.created_at),
+                "target_label": target_label,
+                "result_label": str(result_label),
+            }
+        )
+    return templates.TemplateResponse(request, "audit.html", {"user": user, "entries": entries, "entries_view": entries_view})
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -2739,6 +3102,34 @@ def settings_page(
             "user": user,
             "providers": providers,
             "default_settings": default_settings,
+            "ui_message": request.query_params.get("message"),
+            "ui_error": request.query_params.get("error"),
+        },
+    )
+
+
+@app.get("/settings/defaults/review", response_class=HTMLResponse)
+def settings_defaults_review_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_session_user),
+) -> HTMLResponse:
+    provider_row = db.scalar(select(ProviderModel).where(ProviderModel.name == "meshtastic"))
+    default_settings = {}
+    if provider_row and isinstance(provider_row.config, dict):
+        payload = provider_row.config.get("default_settings")
+        if isinstance(payload, dict):
+            default_settings = payload
+    nodes = InventoryService(db).list_nodes(provider="meshtastic")
+    field_labels = _summarize_patch_fields(default_settings) if default_settings else []
+    return templates.TemplateResponse(
+        request,
+        "settings_defaults_review.html",
+        {
+            "user": user,
+            "default_settings": default_settings,
+            "field_labels": field_labels,
+            "nodes": nodes,
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
         },
@@ -2837,7 +3228,8 @@ def ui_settings_defaults_save(
 
 @app.post("/ui/settings/defaults/apply")
 def ui_settings_defaults_apply(
-    dry_run: bool = Form(False),
+    confirm_apply_defaults: str = Form(""),
+    dry_run: str = Form(""),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role("operator")),
 ) -> RedirectResponse:
@@ -2853,6 +3245,11 @@ def ui_settings_defaults_apply(
         node_ids = [str(node.id) for node in nodes if node.id is not None]
         if not node_ids:
             return RedirectResponse(url="/settings?error=No+managed+Meshtastic+nodes+found", status_code=303)
+        confirmed = _parse_optional_bool(confirm_apply_defaults)
+        if confirmed is not True:
+            error = quote_plus("Review the affected nodes and confirm the defaults rollout before queueing")
+            return RedirectResponse(url=f"/settings/defaults/review?error={error}", status_code=303)
+        dry_run_value = _parse_optional_bool(dry_run) is True
 
         job = JobsService(db).create(
             job_type="multi_node_config_patch",
@@ -2860,7 +3257,7 @@ def ui_settings_defaults_apply(
             source="ui",
             payload={
                 "node_ids": node_ids,
-                "dry_run": dry_run,
+                "dry_run": dry_run_value,
                 "base_patch": default_settings,
                 "clone": {},
                 "location_spread": {"enabled": False},

@@ -4,106 +4,124 @@
 <meta http-equiv="refresh" content="3">
 {% endif %}
 <section class="page-shell">
-  <header class="page-hero page-hero-steel">
+  <header class="page-header">
     <div>
-      <p class="eyebrow">Execution</p>
+      <p class="eyebrow">Verify</p>
       <h1>Jobs</h1>
-      <p class="page-summary">This page should answer three questions fast: what is running, what failed, and what evidence exists for each run.</p>
+      <p class="page-summary">Execution state, failures first, and human-readable evidence before raw details.</p>
     </div>
-    <div class="hero-metrics">
-      <article class="hero-metric">
-        <span>Total visible</span>
-        <strong>{{ jobs|length }}</strong>
-      </article>
-      <article class="hero-metric">
-        <span>Running</span>
-        <strong>{{ job_counts.running }}</strong>
-      </article>
-      <article class="hero-metric">
-        <span>Failed</span>
-        <strong>{{ job_counts.failed }}</strong>
-      </article>
-      <article class="hero-metric">
-        <span>Live refresh</span>
-        <strong>{{ 'On' if auto_refresh else 'Off' }}</strong>
-      </article>
+    <div class="page-actions">
+      <span class="status-pill status-pill-warning">{{ job_counts.running }} running</span>
+      <span class="status-pill status-pill-danger">{{ job_counts.failed }} failed</span>
+      <span class="status-pill status-pill-success">{{ job_counts.success }} successful</span>
+      <a href="{{ refresh_toggle_url }}" class="ghost-link">{{ 'Pause live refresh' if auto_refresh else 'Enable live refresh' }}</a>
     </div>
   </header>
 
-  <section class="panel-card">
-    <div class="section-header compact-header">
-      <div>
-        <p class="eyebrow">Controls</p>
-        <h2>Execution view options</h2>
-      </div>
-      <div class="inline-actions">
-        <p class="muted">Live refresh {{ 'enabled' if auto_refresh else 'paused' }} every 3s.</p>
-        <a href="{{ refresh_toggle_url }}">{{ 'Pause live refresh' if auto_refresh else 'Enable live refresh' }}</a>
-      </div>
+  <form method="get" action="/jobs" class="panel-card filter-bar">
+    <label>Search
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Job id, type, actor, source" />
+    </label>
+    <label>Status
+      <select name="status">
+        <option value="all" {% if filters.status == 'all' %}selected{% endif %}>All</option>
+        <option value="failed" {% if filters.status == 'failed' %}selected{% endif %}>Failed first</option>
+        <option value="running" {% if filters.status == 'running' %}selected{% endif %}>Running</option>
+        <option value="success" {% if filters.status == 'success' %}selected{% endif %}>Successful</option>
+      </select>
+    </label>
+    <div class="button-row filter-actions">
+      <button type="submit">Apply</button>
+      <a href="/jobs" class="ghost-link">Clear</a>
     </div>
-    <div class="status-strip">
-      <span class="status-pill status-pill-warning">{{ job_counts.running }} active</span>
-      <span class="status-pill status-pill-danger">{{ job_counts.failed }} failed</span>
-      <span class="status-pill status-pill-success">{{ job_counts.success }} successful</span>
-    </div>
-  </section>
+  </form>
 
   <article class="panel-card">
-    <div class="section-header">
+    <div class="section-header compact-header">
       <div>
         <p class="eyebrow">Execution table</p>
-        <h2>Recent system jobs</h2>
+        <h2>Recent jobs</h2>
       </div>
     </div>
     <div class="table-wrap">
       <table class="data-table">
         <tr>
-          <th>Job</th>
           <th>Status</th>
-          <th>By</th>
+          <th>Job type</th>
+          <th>Target count</th>
+          <th>Actor</th>
           <th>Source</th>
           <th>Created</th>
-          <th>Timeline</th>
-          <th>Evidence</th>
+          <th>Duration</th>
+          <th>Result summary</th>
+          <th>Actions</th>
         </tr>
-        {% for j in jobs %}
+        {% for row in jobs_view %}
         <tr>
+          <td><span class="status-pill status-pill-{{ 'success' if row.job.status == 'success' else ('danger' if row.job.status == 'failed' else 'warning') }}">{{ row.job.status }}</span></td>
           <td>
-            <strong>{{ job_type_label(j.job_type) }}</strong>
-            <div class="muted">{{ j.id }}</div>
-          </td>
-          <td><span class="status-pill status-pill-{{ 'success' if j.status == 'success' else ('danger' if j.status == 'failed' else 'warning' if j.status in ['pending', 'running'] else 'neutral') }}">{{ j.status }}</span></td>
-          <td>{{ j.requested_by }}</td>
-          <td>{{ j.source }}</td>
-          <td>{{ j.created_at }}</td>
-          <td>
-            <div>Start {{ j.started_at or '-' }}</div>
-            <div>Finish {{ j.finished_at or '-' }}</div>
+            <div class="job-row-main">
+              <strong>{{ job_type_label(row.job.job_type) }}</strong>
+              <span class="job-row-subtitle">{{ row.job.id }}</span>
+            </div>
           </td>
           <td>
-            {% set logs = results_by_job.get(j.id|string, []) %}
-            {% if logs %}
-            <details {% if j.status in ['pending', 'running', 'failed'] %}open{% endif %}>
-              <summary>View {{ logs|length }} log entr{{ 'y' if logs|length == 1 else 'ies' }}</summary>
-              <div class="table-wrap nested-table-wrap">
+            <strong>{{ row.target_count }}</strong>
+            {% if row.target_preview %}
+            <div class="node-secondary">
+              {% for label in row.target_preview %}
+              <span class="meta-chip">{{ label }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td>{{ row.job.requested_by }}</td>
+          <td>{{ row.job.source }}</td>
+          <td><span title="{{ exact_timestamp(row.job.created_at) }}">{{ relative_timestamp(row.job.created_at) }}</span></td>
+          <td>{{ row.duration }}</td>
+          <td>
+            <div class="job-row-summary">
+              <strong>{{ row.result_summary }}</strong>
+              {% for summary in row.evidence_summary %}
+              <span class="table-secondary">{{ summary }}</span>
+              {% endfor %}
+            </div>
+          </td>
+          <td>
+            <details class="job-evidence-panel" {% if row.job.status in ['failed', 'running', 'pending'] %}open{% endif %}>
+              <summary>View evidence</summary>
+              <div class="review-list">
+                <div class="detail-pair"><span>Summary</span><strong>{{ row.result_summary }}</strong></div>
+                <div class="detail-pair"><span>Targets</span><strong>{{ row.target_count }}</strong></div>
+                <div class="detail-pair"><span>Timeline</span><strong>{{ exact_timestamp(row.job.created_at) }}</strong></div>
+              </div>
+              {% if row.result_rows %}
+              <div class="table-wrap">
                 <table class="data-table data-table-compact">
-                  <tr><th>Time</th><th>Status</th><th>Message</th><th>Details</th></tr>
-                  {% for r in logs %}
+                  <tr><th>Time</th><th>Status</th><th>Message</th><th>Raw details</th></tr>
+                  {% for result in row.result_rows %}
                   <tr>
-                    <td>{{ r.created_at }}</td>
-                    <td><span class="status-pill status-pill-{{ 'success' if r.status == 'success' else ('danger' if r.status == 'failed' else 'warning' if r.status == 'running' else 'neutral') }}">{{ r.status }}</span></td>
-                    <td>{{ r.message }}</td>
-                    <td><pre>{{ r.details | tojson(indent=2) }}</pre></td>
+                    <td><span title="{{ exact_timestamp(result.created_at) }}">{{ relative_timestamp(result.created_at) }}</span></td>
+                    <td><span class="status-pill status-pill-{{ 'success' if result.status == 'success' else ('danger' if result.status == 'failed' else 'warning') }}">{{ result.status }}</span></td>
+                    <td>{{ result.message or 'No message' }}</td>
+                    <td>
+                      <details>
+                        <summary>Raw details</summary>
+                        <pre>{{ result.details | tojson(indent=2) }}</pre>
+                      </details>
+                    </td>
                   </tr>
                   {% endfor %}
                 </table>
               </div>
+              {% else %}
+              <div class="empty-state">No evidence rows recorded yet.</div>
+              {% endif %}
             </details>
-            {% else %}
-            <span class="muted">No logs yet</span>
-            {% endif %}
           </td>
         </tr>
+        {% else %}
+        <tr><td colspan="9" class="muted">No jobs match the current filters.</td></tr>
         {% endfor %}
       </table>
     </div>

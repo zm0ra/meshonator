@@ -1,42 +1,35 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="page-shell">
-  {% if ui_message %}<section class="panel-card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
-  {% if ui_error %}<section class="panel-card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
+  {% if ui_message %}<section class="status-banner panel-card status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+  {% if ui_error %}<section class="status-banner panel-card status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
 
-  <header class="page-hero page-hero-steel">
+  <header class="page-header">
     <div>
-      <p class="eyebrow">Overview</p>
+      <p class="eyebrow">Observe</p>
       <h1>Fleet overview</h1>
-      <p class="page-summary">The dashboard is now read-only by design. It should answer what is healthy, what is degraded, and where the next operator decision belongs. {{ attention_summary }}</p>
-      <div class="atlas-legend operator-legend">
-        <span class="status-pill status-pill-{{ worker_status.state }}">{{ worker_status.label }}</span>
-        <span class="meta-chip">Last sync {{ latest_sync_at }}</span>
-        <span class="meta-chip">Last discovery {{ latest_discovery_at }}</span>
-        <span class="meta-chip">Coverage {{ fleet_health.coverage }}</span>
-      </div>
+      <p class="page-summary">The dashboard is now read-only by design. Fleet health, pending work, and recent execution state.</p>
     </div>
-    <div class="hero-metrics">
-      {% for metric in metrics[:4] %}
-      <article class="hero-metric metric-card metric-card-{{ metric.tone }}">
-        <span>{{ metric.label }}</span>
-        <strong>{{ metric.value }}</strong>
-      </article>
-      {% endfor %}
+    <div class="page-actions">
+      <span class="status-pill status-pill-{{ worker_status.state }}">{{ worker_status.label }}</span>
+      <span class="meta-chip">Last sync {{ latest_sync_at }}</span>
+      <span class="meta-chip">Last discovery {{ latest_discovery_at }}</span>
+      <span class="meta-chip">Coverage {{ fleet_health.coverage }}</span>
     </div>
   </header>
 
-  <section class="metric-grid">
-    {% for metric in metrics %}
-    <a href="{{ metric.href }}" class="panel-card metric-tile metric-tile-{{ metric.tone }}">
-      <p class="eyebrow">{{ metric.label }}</p>
-      <strong class="metric-tile-value">{{ metric.value }}</strong>
-      <p class="muted">{{ metric.meta }}</p>
-    </a>
+  <section class="metric-strip">
+    {% for metric in metrics[:4] %}
+    <article class="metric-card">
+      <span class="eyebrow">{{ metric.label }}</span>
+      <strong>{{ metric.value }}</strong>
+      <span class="table-secondary">{{ metric.meta }}</span>
+    </article>
     {% endfor %}
   </section>
 
-  <section class="workspace-columns workspace-columns-wide">
+  {% set failed_recent_jobs = recent_jobs | selectattr('status', 'equalto', 'failed') | list %}
+  <section class="workspace-grid workspace-grid-dashboard">
     <div class="side-stack">
       <article class="panel-card">
         <div class="section-header compact-header">
@@ -44,7 +37,7 @@
             <p class="eyebrow">Attention lanes</p>
             <h2>What needs a decision next</h2>
           </div>
-          <a href="/nodes">Open nodes</a>
+          <a href="/nodes" class="ghost-link">Open nodes</a>
         </div>
         <div class="subtle-list">
           {% for item in attention_items %}
@@ -53,11 +46,11 @@
               <strong>{{ item.title }}</strong>
               <span class="status-pill status-pill-{{ item.tone }}">{{ item.count }}</span>
             </div>
-            <p class="muted">{{ item.description }}</p>
-            <span class="priority-card-cta">{{ item.cta }}</span>
+            <span class="table-secondary">{{ item.description }}</span>
+            <span class="table-secondary">{{ item.cta }}</span>
           </a>
           {% else %}
-          <p class="muted">No attention items are active.</p>
+          <div class="empty-state">No active attention lanes.</div>
           {% endfor %}
         </div>
       </article>
@@ -65,140 +58,106 @@
       <article class="panel-card">
         <div class="section-header compact-header">
           <div>
-            <p class="eyebrow">Recent changes</p>
-            <h2>Latest operator notes</h2>
+            <p class="eyebrow">Recent failed jobs</p>
+            <h2>Failures first</h2>
           </div>
-          <a href="/audit">View all</a>
+          <a href="/jobs?status=failed" class="ghost-link">Open jobs</a>
         </div>
         <div class="timeline-stack">
-          {% for entry in recent_changes %}
-          <a href="/audit" class="timeline-item operator-timeline-item">
-            <div>
-              <div class="timeline-title-row">
-                <strong>{{ entry.action }}</strong>
-                <span class="status-pill status-pill-neutral">{{ entry.actor }}</span>
-              </div>
-              <p class="muted">{{ entry.source or 'ui' }}</p>
+          {% for job in failed_recent_jobs[:5] %}
+          <a href="/jobs?status=failed" class="timeline-item">
+            <div class="timeline-title-row">
+              <strong>{{ job_type_label(job.job_type) }}</strong>
+              <span class="status-pill status-pill-danger">{{ job.status }}</span>
             </div>
-            <span class="timeline-time">{{ entry.created_at }}</span>
+            <span class="table-secondary">{{ job.requested_by }} via {{ job.source }}</span>
+            <span class="table-secondary">{{ relative_timestamp(job.created_at) }}</span>
           </a>
           {% else %}
-          <p class="muted">No recent audit entries recorded.</p>
+          <div class="empty-state">No recent failed jobs.</div>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="panel-card">
+        <div class="section-header compact-header">
+          <div>
+            <p class="eyebrow">Recent audit</p>
+            <h2>Latest trace</h2>
+          </div>
+          <a href="/audit" class="ghost-link">View all</a>
+        </div>
+        <div class="timeline-stack">
+          {% for entry in recent_changes[:6] %}
+          <a href="/audit" class="timeline-item">
+            <div class="timeline-title-row">
+              <strong>{{ audit_action_label(entry.action) }}</strong>
+              <span class="meta-chip">{{ entry.actor }}</span>
+            </div>
+            <span class="table-secondary">{{ entry.source or 'ui' }}</span>
+            <span class="table-secondary">{{ relative_timestamp(entry.created_at) }}</span>
+          </a>
+          {% else %}
+          <div class="empty-state">No recent audit entries.</div>
           {% endfor %}
         </div>
       </article>
     </div>
 
-    <div class="side-stack">
+    <aside class="side-stack">
+      <article class="panel-card panel-card-dark">
+        <div class="section-header compact-header">
+          <div>
+            <p class="eyebrow">System state</p>
+            <h2>Worker and queue health</h2>
+          </div>
+        </div>
+        <span class="status-pill status-pill-{{ worker_status.state }}">{{ worker_status.label }}</span>
+        <p class="table-secondary">{{ worker_status.detail }}</p>
+        <div class="status-strip">
+          <span class="meta-chip">{{ fleet_health.coverage }}</span>
+          <span class="meta-chip">Attention {{ attention_summary }}</span>
+        </div>
+      </article>
+
       <article class="panel-card">
         <div class="section-header compact-header">
           <div>
-            <p class="eyebrow">Operations map</p>
-            <h2>Go to the right workspace</h2>
+            <p class="eyebrow">Go next</p>
+            <h2>Workspaces</h2>
           </div>
         </div>
         <div class="navigation-grid">
-          <a href="/nodes" class="command-link">
-            <strong>Nodes</strong>
-            <span>Selection, rollout, and per-node drilldown</span>
-          </a>
-          <a href="/jobs" class="command-link">
-            <strong>Jobs</strong>
-            <span>Queue state, failures, and execution evidence</span>
-          </a>
-          <a href="/map" class="command-link">
-            <strong>Map</strong>
-            <span>Coverage and missing coordinates</span>
-          </a>
-          <a href="/settings" class="command-link">
-            <strong>Settings</strong>
-            <span>Integrations, providers, and defaults</span>
-          </a>
+          <a href="/nodes" class="command-link"><strong>Nodes</strong><span class="table-secondary">Inventory, selection, and rollout review.</span></a>
+          <a href="/jobs" class="command-link"><strong>Jobs</strong><span class="table-secondary">Execution state and evidence.</span></a>
+          <a href="/settings" class="command-link"><strong>Settings</strong><span class="table-secondary">Reusable defaults and provider diagnostics.</span></a>
+          <a href="/map" class="command-link"><strong>Map</strong><span class="table-secondary">Spatial inspection and missing location work.</span></a>
         </div>
       </article>
 
       <article class="panel-card">
         <div class="section-header compact-header">
           <div>
-            <p class="eyebrow">Execution status</p>
-            <h2>System state</h2>
+            <p class="eyebrow">Provider health</p>
+            <h2>Diagnostics</h2>
           </div>
-          <a href="/jobs">Open jobs</a>
-        </div>
-        <p class="muted">{{ worker_status.detail }}</p>
-        <div class="subtle-list">
-          {% if latest_sync_job %}
-          <div>
-            <div class="timeline-title-row">
-              <strong>Latest sync</strong>
-              <span class="status-pill status-pill-{{ 'success' if latest_sync_job.status == 'success' else ('danger' if latest_sync_job.status == 'failed' else 'warning') }}">{{ latest_sync_job.status }}</span>
-            </div>
-            <p class="muted">{{ latest_sync_job.source }} by {{ latest_sync_job.requested_by }}</p>
-          </div>
-          {% endif %}
-          {% if latest_discovery_job %}
-          <div>
-            <div class="timeline-title-row">
-              <strong>Latest discovery</strong>
-              <span class="status-pill status-pill-{{ 'success' if latest_discovery_job.status == 'success' else ('danger' if latest_discovery_job.status == 'failed' else 'warning') }}">{{ latest_discovery_job.status }}</span>
-            </div>
-            {% if latest_discovery_progress %}<p class="muted">{{ latest_discovery_progress.message }}</p>{% endif %}
-          </div>
-          {% endif %}
-        </div>
-      </article>
-
-      <article class="panel-card">
-        <div class="section-header compact-header">
-          <div>
-            <p class="eyebrow">Provider posture</p>
-            <h2>Health snapshot</h2>
-          </div>
-          <a href="/settings">Open settings</a>
+          <a href="/settings" class="ghost-link">Open settings</a>
         </div>
         <div class="subtle-list">
           {% for provider in providers_health %}
-          <div>
-            <div>
-              <div class="timeline-title-row">
-                <strong>{{ provider.provider }}</strong>
-                <span class="status-pill status-pill-{{ 'success' if provider.status == 'ok' else 'warning' }}">{{ provider.status }}</span>
-              </div>
-              <p class="muted">{{ provider.details if provider.details else 'No extra provider details reported.' }}</p>
+          <div class="subtle-list-item-like">
+            <div class="timeline-title-row">
+              <strong>{{ provider.provider }}</strong>
+              <span class="status-pill status-pill-{{ 'success' if provider.status == 'ok' else 'warning' }}">{{ provider.status }}</span>
             </div>
+            <span class="table-secondary">{{ provider.details if provider.details else 'No extra provider details reported.' }}</span>
           </div>
           {% else %}
-          <p class="muted">No provider diagnostics reported.</p>
+          <div class="empty-state">No provider diagnostics reported.</div>
           {% endfor %}
         </div>
       </article>
-
-      <article class="panel-card">
-        <div class="section-header compact-header">
-          <div>
-            <p class="eyebrow">Operations in motion</p>
-            <h2>Recent jobs</h2>
-          </div>
-          <a href="/jobs">View all</a>
-        </div>
-        <div class="timeline-stack">
-          {% for job in recent_jobs %}
-          <a href="/jobs" class="timeline-item operator-timeline-item">
-            <div>
-              <div class="timeline-title-row">
-                <strong>{{ job_type_label(job.job_type) }}</strong>
-                <span class="status-pill status-pill-{{ 'success' if job.status == 'success' else ('danger' if job.status == 'failed' else 'warning') }}">{{ job.status }}</span>
-              </div>
-              <p class="muted">{{ job.requested_by }} via {{ job.source }}</p>
-            </div>
-            <span class="timeline-time">{{ job.created_at }}</span>
-          </a>
-          {% else %}
-          <p class="muted">No recent jobs recorded.</p>
-          {% endfor %}
-        </div>
-      </article>
-    </div>
+    </aside>
   </section>
 </section>
 {% endblock %}

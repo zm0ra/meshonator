@@ -1,22 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="page-shell">
-  <header class="page-hero page-hero-slate">
+  <header class="page-header">
     <div>
-      <p class="eyebrow">Audit trail</p>
-      <h1>Audit Log</h1>
-      <p class="page-summary">Every fleet mutation, queued action, and operator decision should be traceable without digging through system internals.</p>
+      <p class="eyebrow">Trace</p>
+      <h1>Audit</h1>
+      <p class="page-summary">Human-readable actions, relative time, and target identity before internal ids.</p>
     </div>
-    <div class="hero-metrics">
-      <article class="hero-metric">
-        <span>Visible entries</span>
-        <strong>{{ entries|length }}</strong>
-      </article>
+    <div class="page-actions">
+      <span class="meta-chip">{{ entries_view|length }} visible</span>
     </div>
   </header>
 
   <article class="panel-card">
-    <div class="section-header">
+    <div class="section-header compact-header">
       <div>
         <p class="eyebrow">Timeline</p>
         <h2>Recent operator and system actions</h2>
@@ -24,8 +21,25 @@
     </div>
     <div class="table-wrap">
       <table class="data-table">
-        <tr><th>Time</th><th>Actor</th><th>Source</th><th>Action</th><th>Provider</th><th>Node</th></tr>
-        {% for e in entries %}<tr><td>{{ e.created_at }}</td><td>{{ e.actor }}</td><td>{{ e.source }}</td><td>{{ audit_action_label(e.action) }}</td><td>{{ e.provider or '-' }}</td><td>{{ e.node_id or '-' }}</td></tr>{% endfor %}
+        <tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Source</th><th>Result</th></tr>
+        {% for row in entries_view %}
+        <tr>
+          <td><span title="{{ row.exact_time }}">{{ row.relative_time }}</span></td>
+          <td>{{ row.entry.actor }}</td>
+          <td>{{ audit_action_label(row.entry.action) }}</td>
+          <td>
+            {% if row.entry.node_id %}
+            <a href="/nodes/{{ row.entry.node_id }}">{{ row.target_label }}</a>
+            {% else %}
+            {{ row.target_label }}
+            {% endif %}
+          </td>
+          <td>{{ row.entry.source }}</td>
+          <td>{{ row.result_label }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted">No audit rows match the current filters.</td></tr>
+        {% endfor %}
       </table>
     </div>
   </article>

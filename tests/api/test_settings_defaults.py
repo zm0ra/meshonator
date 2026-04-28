@@ -49,7 +49,16 @@ def test_settings_save_and_apply_defaults(client, db):
     db.add(ManagedNodeModel(provider="meshtastic", provider_node_id="!settings", short_name="SET", favorite=True, reachable=True))
     db.commit()
 
-    apply = client.post("/ui/settings/defaults/apply", data={}, cookies=cookies, follow_redirects=False)
+    review = client.get("/settings/defaults/review", cookies=cookies)
+    assert review.status_code == 200
+    assert "Defaults rollout review" in review.text
+
+    apply = client.post(
+        "/ui/settings/defaults/apply",
+        data={"confirm_apply_defaults": "true"},
+        cookies=cookies,
+        follow_redirects=False,
+    )
     assert apply.status_code in (302, 303)
     job = db.query(JobModel).order_by(JobModel.created_at.desc()).first()
     assert job is not None

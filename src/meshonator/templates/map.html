@@ -1,69 +1,69 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="page-shell">
-  <header class="page-hero page-hero-ember">
+  <header class="page-header">
     <div>
-      <p class="eyebrow">Spatial view</p>
-      <h1>Fleet Map</h1>
-      <p class="page-summary">Use the map as a location-quality workspace: see where the reachable fleet is, spot missing coordinates quickly, and jump straight into node correction when geography is incomplete.</p>
+      <p class="eyebrow">Inspect</p>
+      <h1>Map</h1>
+      <p class="page-summary">Spatial inspection first. Use the map to spot missing coordinates, inspect selected nodes, and jump into correction work.</p>
     </div>
-    <div class="hero-metrics">
-      <article class="hero-metric">
-        <span>Known nodes</span>
-        <strong>{{ known_nodes_count }}</strong>
-      </article>
-      <article class="hero-metric">
-        <span>Mapped</span>
-        <strong>{{ mapped_nodes_count }}</strong>
-      </article>
-      <article class="hero-metric">
-        <span>Missing location</span>
-        <strong>{{ without_location|length }}</strong>
-      </article>
+    <div class="page-actions">
+      <span class="meta-chip">{{ known_nodes_count }} known</span>
+      <span class="meta-chip">{{ mapped_nodes_count }} mapped</span>
+      <span class="status-pill status-pill-warning">{{ without_location|length }} missing location</span>
     </div>
   </header>
 
   <section class="workspace-columns workspace-columns-wide">
     <article class="panel-card panel-card-map">
-      <div class="section-header">
+      <div class="section-header compact-header">
         <div>
-          <p class="eyebrow">Coverage board</p>
-          <h2>Live fleet positions</h2>
+          <p class="eyebrow">Coverage</p>
+          <h2>Fleet positions</h2>
         </div>
       </div>
       <div id="fleetMap" class="map-stage"></div>
     </article>
 
     <aside class="side-stack">
-      <article class="panel-card panel-card-dark">
-        <p class="eyebrow">Operational note</p>
-        <h3>Map health matters only when actions follow.</h3>
-        <p class="muted">Treat missing coordinates as an inventory quality issue, not as a passive statistic.</p>
+      <article class="panel-card">
+        <div class="section-header compact-header">
+          <div>
+            <p class="eyebrow">Selected node</p>
+            <h2>Marker details</h2>
+          </div>
+        </div>
+        <div id="selected-map-node" class="empty-state">Select a marker to inspect node details and open its node page.</div>
       </article>
 
-      {% if without_location %}
       <article class="panel-card">
         <div class="section-header compact-header">
           <div>
             <p class="eyebrow">Needs correction</p>
-            <h3>Nodes without location</h3>
+            <h2>Nodes without location</h2>
           </div>
+          <a href="/nodes?location=missing" class="ghost-link">Open in nodes</a>
         </div>
         <div class="table-wrap">
-          <table class="data-table">
-            <tr><th>Provider</th><th>Node</th><th>Role</th><th>Last Seen</th></tr>
+          <table class="data-table data-table-compact">
+            <tr><th>Node</th><th>Status</th><th>Last seen</th></tr>
             {% for n in without_location %}
             <tr>
-              <td>{{ n.provider }}</td>
-              <td><a href="/nodes/{{ n.id }}">{{ n.short_name or n.provider_node_id }}</a></td>
-              <td>{{ n.role or '-' }}</td>
-              <td>{{ n.last_seen }}</td>
+              <td>
+                <div class="node-identity">
+                  <a href="/nodes/{{ n.id }}" class="node-link-compact">{{ node_identity(n) }}</a>
+                  <span class="table-secondary">{{ node_display_name(n) }}</span>
+                </div>
+              </td>
+              <td><span class="status-pill status-pill-{{ 'success' if n.reachable else 'warning' }}">{{ 'online' if n.reachable else 'offline' }}</span></td>
+              <td><span title="{{ exact_timestamp(n.last_seen) }}">{{ relative_timestamp(n.last_seen) }}</span></td>
             </tr>
+            {% else %}
+            <tr><td colspan="3" class="muted">Every known node has coordinates.</td></tr>
             {% endfor %}
           </table>
         </div>
       </article>
-      {% endif %}
     </aside>
   </section>
 </section>
@@ -72,12 +72,36 @@
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
   const markers = {{ markers | tojson }};
   const bounds = [];
-  markers.forEach(m => {
-    const color = m.reachable ? '#1f7a1f' : '#a3462c';
-    const marker = L.circleMarker([m.lat, m.lon], { radius: m.favorite ? 9 : 7, color }).addTo(map);
-    marker.bindPopup(`<b>${m.name}</b><br/>${m.provider} / ${m.provider_node_id}<br/>${m.reachable ? 'online' : 'offline'}<br/>last seen: ${m.last_seen}`);
-    bounds.push([m.lat, m.lon]);
+  const selectedPanel = document.getElementById('selected-map-node');
+
+  function renderSelectedMarker(marker) {
+    if (!selectedPanel) {
+      return;
+    }
+    const lastSeen = marker.last_seen || 'Never';
+    selectedPanel.innerHTML = `
+      <div class="detail-pair"><span>Node</span><strong>${marker.provider}: ${marker.provider_node_id}</strong></div>
+      <div class="detail-pair"><span>Name</span><strong>${marker.name}</strong></div>
+      <div class="detail-pair"><span>Status</span><strong>${marker.reachable ? 'online' : 'offline'}</strong></div>
+      <div class="detail-pair"><span>Coordinates</span><strong>${marker.lat.toFixed(5)}, ${marker.lon.toFixed(5)}</strong></div>
+      <div class="detail-pair"><span>Last seen</span><strong>${lastSeen}</strong></div>
+      <a href="/nodes/${marker.id}" class="button-link">Open node</a>
+    `;
+  }
+
+  markers.forEach((markerData) => {
+    const color = markerData.reachable ? '#4be0b2' : '#ef7d83';
+    const marker = L.circleMarker([markerData.lat, markerData.lon], { radius: markerData.favorite ? 9 : 7, color }).addTo(map);
+    marker.bindPopup(`<strong>${markerData.name}</strong><br/>${markerData.provider}: ${markerData.provider_node_id}<br/><a href="/nodes/${markerData.id}">Open node</a>`);
+    marker.on('click', () => renderSelectedMarker(markerData));
+    bounds.push([markerData.lat, markerData.lon]);
   });
-  if (bounds.length) map.fitBounds(bounds, { padding: [20,20] });
+
+  if (markers.length) {
+    renderSelectedMarker(markers[0]);
+  }
+  if (bounds.length) {
+    map.fitBounds(bounds, { padding: [20, 20] });
+  }
 </script>
 {% endblock %}

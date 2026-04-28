@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-shell">
+  {% if ui_message %}<section class="status-banner panel-card status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+  {% if ui_error %}<section class="status-banner panel-card status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
+
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Review impact</p>
+      <h1>Defaults rollout review</h1>
+      <p class="page-summary">Review the affected Meshtastic nodes and the exact default fields before queuing the rollout.</p>
+    </div>
+    <div class="page-actions">
+      <span class="meta-chip">{{ nodes|length }} targets</span>
+      <span class="meta-chip">{{ field_labels|length }} fields</span>
+      <span class="status-pill status-pill-warning">{{ nodes | rejectattr('reachable') | list | length }} offline</span>
+    </div>
+  </header>
+
+  <section class="workspace-columns">
+    <article class="panel-card">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Targets</p>
+          <h2>Affected nodes</h2>
+        </div>
+        <a href="/settings" class="ghost-link">Back to settings</a>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table data-table-compact">
+          <tr><th>Node</th><th>Status</th><th>Last seen</th></tr>
+          {% for node in nodes[:20] %}
+          <tr>
+            <td>
+              <div class="node-identity">
+                <a href="/nodes/{{ node.id }}" class="node-link-compact">{{ node_identity(node) }}</a>
+                <span class="table-secondary">{{ node_display_name(node) }}</span>
+              </div>
+            </td>
+            <td><span class="status-pill status-pill-{{ 'success' if node.reachable else 'warning' }}">{{ 'online' if node.reachable else 'offline' }}</span></td>
+            <td><span title="{{ exact_timestamp(node.last_seen) }}">{{ relative_timestamp(node.last_seen) }}</span></td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% if nodes|length > 20 %}<p class="table-secondary">Showing first 20 nodes. The queued job will target all {{ nodes|length }} nodes.</p>{% endif %}
+    </article>
+
+    <article class="review-panel">
+      <div class="section-header compact-header">
+        <div>
+          <p class="eyebrow">Review and queue</p>
+          <h2>Change summary</h2>
+        </div>
+      </div>
+      <ul class="review-list">
+        {% for label in field_labels %}
+        <li>{{ label }}</li>
+        {% else %}
+        <li>No saved default fields were found.</li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/ui/settings/defaults/apply" class="stack">
+        <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>
+        <label><input type="checkbox" name="confirm_apply_defaults" value="true" required /> I reviewed the targets and change summary above.</label>
+        <button type="submit" {% if not field_labels or not nodes %}disabled{% endif %}>Queue defaults rollout</button>
+      </form>
+      <details>
+        <summary>Raw defaults JSON</summary>
+        <pre>{{ default_settings | tojson(indent=2) }}</pre>
+      </details>
+    </article>
+  </section>
+</section>
+{% endblock %}

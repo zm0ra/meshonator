@@ -69,3 +69,19 @@ def test_group_remove_selected_removes_manual_members(client, db):
     assert params["selected_node_ids"] == [str(n1.id), str(n2.id)]
 
     assert GroupsService(db).list_assigned_members(group.id) == []
+
+
+def test_manual_only_group_does_not_resolve_all_nodes(client, db):
+    bootstrap_admin(db, "admin", "admin", "admin")
+    manual_member = ManagedNodeModel(provider="meshtastic", provider_node_id="!gm1", short_name="GM1", reachable=True)
+    other_node = ManagedNodeModel(provider="meshtastic", provider_node_id="!gm2", short_name="GM2", reachable=True)
+    db.add(manual_member)
+    db.add(other_node)
+    db.commit()
+
+    groups = GroupsService(db)
+    group = groups.create_group("manual-only-group", None, {}, {})
+    groups.assign_node(group.id, manual_member.id)
+
+    resolved_ids = {str(node.id) for node in groups.resolve_all_members(group)}
+    assert resolved_ids == {str(manual_member.id)}

@@ -109,6 +109,8 @@ class GroupsService:
 
     def resolve_dynamic_members(self, group: NodeGroupModel) -> list[ManagedNodeModel]:
         f = group.dynamic_filter or {}
+        if not f:
+            return []
         stmt = select(ManagedNodeModel)
         if provider := f.get("provider"):
             stmt = stmt.where(ManagedNodeModel.provider == provider)

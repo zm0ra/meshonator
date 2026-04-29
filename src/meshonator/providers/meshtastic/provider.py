@@ -274,6 +274,10 @@ class MeshtasticProvider(Provider):
         elif action == "remove_node":
             node.removeNode(target_node_id)
 
+        wait_for_ack = getattr(conn, "waitForAckNak", None)
+        if callable(wait_for_ack):
+            wait_for_ack()
+
         return {
             "destination_node_id": destination_node_id,
             "target_node_id": target_node_id,

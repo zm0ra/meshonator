@@ -69,6 +69,9 @@ class _FakeConn:
     def __init__(self) -> None:
         self.localNode = _FakeLocalNode()
 
+    def waitForAckNak(self) -> None:
+        return None
+
 
 class _StrictAltitudeLocalNode(_FakeLocalNode):
     def setFixedPosition(self, lat: float, lon: float, alt=None):
@@ -80,6 +83,32 @@ class _StrictAltitudeLocalNode(_FakeLocalNode):
 class _StrictAltitudeConn:
     def __init__(self) -> None:
         self.localNode = _StrictAltitudeLocalNode()
+
+    def waitForAckNak(self) -> None:
+        return None
+
+
+class _FavoriteLocalNode:
+    def __init__(self) -> None:
+        self.favorite_calls: list[tuple[str, str]] = []
+
+    def setFavorite(self, node_id: str) -> None:
+        self.favorite_calls.append(("set", node_id))
+
+    def removeFavorite(self, node_id: str) -> None:
+        self.favorite_calls.append(("remove", node_id))
+
+    def removeNode(self, node_id: str) -> None:
+        self.favorite_calls.append(("delete", node_id))
+
+
+class _FavoriteConn:
+    def __init__(self) -> None:
+        self.localNode = _FavoriteLocalNode()
+        self.wait_for_ack_calls = 0
+
+    def waitForAckNak(self) -> None:
+        self.wait_for_ack_calls += 1
 
 
 def test_apply_patch_writes_local_module_and_channel_sections() -> None:
@@ -129,3 +158,20 @@ def test_apply_patch_location_without_altitude_does_not_fail() -> None:
     assert result["mode"] == "apply"
     assert result["applied"]["position"]["altitude"] is None
     assert conn.localNode.fixed_position_calls[-1]["alt"] == 0
+
+
+def test_mutate_node_db_waits_for_ack() -> None:
+    provider = MeshtasticProvider()
+    conn = _FavoriteConn()
+
+    result = provider.mutate_node_db(
+        conn=conn,
+        destination_node_id="!6911afb4",
+        action="set_favorite",
+        target_node_id="!d4a71330",
+        dry_run=False,
+    )
+
+    assert result["mode"] == "apply"
+    assert conn.localNode.favorite_calls == [("set", "!d4a71330")]
+    assert conn.wait_for_ack_calls == 1

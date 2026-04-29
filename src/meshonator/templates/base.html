@@ -14,6 +14,7 @@
   {% set nav_items = [
     {'href': '/', 'label': 'Dashboard', 'active': path == '/', 'icon': 'dashboard'},
     {'href': '/nodes', 'label': 'Nodes', 'active': path.startswith('/nodes'), 'icon': 'nodes'},
+    {'href': '/visibility', 'label': 'Visibility', 'active': path.startswith('/visibility'), 'icon': 'nodes'},
     {'href': '/groups', 'label': 'Groups', 'active': path.startswith('/groups'), 'icon': 'groups'},
     {'href': '/jobs', 'label': 'Jobs', 'active': path.startswith('/jobs'), 'icon': 'jobs'},
     {'href': '/audit', 'label': 'Audit', 'active': path.startswith('/audit'), 'icon': 'audit'},
@@ -25,6 +26,9 @@
   {% if path.startswith('/nodes') %}
     {% set current_title = 'Nodes' %}
     {% set current_subtitle = 'Inventory, selection, and reviewed rollout control.' %}
+  {% elif path.startswith('/visibility') %}
+    {% set current_title = 'Visibility' %}
+    {% set current_subtitle = 'Direct-neighbor coverage, favorite distribution, and mutual visibility.' %}
   {% elif path.startswith('/groups') %}
     {% set current_title = 'Groups' %}
     {% set current_subtitle = 'Define target membership and preview resolved members.' %}

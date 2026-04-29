@@ -931,6 +931,7 @@ def _extract_zero_hop_candidates(raw_metadata: dict[str, Any], max_hops: int = 0
                 "hops_away": hops_away,
                 "last_heard": payload.get("lastHeard"),
                 "snr": payload.get("snr"),
+                "is_favorite": payload.get("isFavorite") is True,
             }
         )
     out.sort(key=lambda item: (item.get("hops_away", 999), (item.get("short_name") or item.get("id") or "")))
@@ -1011,6 +1012,161 @@ def _collect_current_routing_favorite_targets(
             if isinstance(resolved_id, str) and resolved_id.strip():
                 target_ids.add(resolved_id.strip())
     return sorted(target_ids)
+
+
+def _build_visibility_snapshot(nodes: list[ManagedNodeModel]) -> dict[str, Any]:
+    managed_by_provider_id = {
+        node.provider_node_id: node for node in nodes if isinstance(node.provider_node_id, str) and node.provider_node_id
+    }
+    seen_by_source: dict[str, set[str]] = {}
+    favorite_by_source: dict[str, set[str]] = {}
+    source_rows: list[dict[str, Any]] = []
+
+    for node in sorted(nodes, key=lambda item: ((item.short_name or item.provider_node_id or "").lower(), item.provider_node_id)):
+        source_id = node.provider_node_id
+        zero_hop_candidates = _extract_zero_hop_candidates(node.raw_metadata or {}, max_hops=0)
+        managed_peers: list[dict[str, Any]] = []
+        unmanaged_peers: list[dict[str, Any]] = []
+        visible_managed_ids: set[str] = set()
+        favorite_target_ids: set[str] = set()
+
+        for candidate in zero_hop_candidates:
+            target_id = candidate.get("id")
+            if not isinstance(target_id, str) or not target_id.strip():
+                continue
+            target_id = target_id.strip()
+            if target_id == source_id:
+                continue
+            target = managed_by_provider_id.get(target_id)
+            is_favorite = candidate.get("is_favorite") is True
+            peer_row = {
+                "provider_node_id": target_id,
+                "short_name": candidate.get("short_name"),
+                "long_name": candidate.get("long_name"),
+                "role": candidate.get("role"),
+                "snr": candidate.get("snr"),
+                "last_heard": candidate.get("last_heard"),
+                "is_favorite": is_favorite,
+                "managed_node_id": str(target.id) if target else None,
+                "managed_short_name": target.short_name if target else None,
+                "managed_long_name": target.long_name if target else None,
+                "managed_reachable": target.reachable if target else None,
+                "managed_favorite": target.favorite if target else None,
+            }
+            if target is None:
+                unmanaged_peers.append(peer_row)
+                continue
+            visible_managed_ids.add(target_id)
+            if is_favorite:
+                favorite_target_ids.add(target_id)
+            managed_peers.append(peer_row)
+
+        seen_by_source[source_id] = visible_managed_ids
+        favorite_by_source[source_id] = favorite_target_ids
+        source_rows.append(
+            {
+                "node_id": str(node.id),
+                "provider_node_id": source_id,
+                "short_name": node.short_name,
+                "long_name": node.long_name,
+                "reachable": node.reachable,
+                "managed_peers": managed_peers,
+                "unmanaged_peers": unmanaged_peers,
+            }
+        )
+
+    source_by_provider_id = {row["provider_node_id"]: row for row in source_rows}
+    mutual_pairs: list[dict[str, Any]] = []
+    one_way_pairs: list[dict[str, Any]] = []
+    seen_mutual_pairs: set[tuple[str, str]] = set()
+
+    for row in source_rows:
+        source_id = row["provider_node_id"]
+        favorite_targets = favorite_by_source.get(source_id, set())
+        mutual_count = 0
+
+        for peer in row["managed_peers"]:
+            target_id = peer["provider_node_id"]
+            target_visible = seen_by_source.get(target_id, set())
+            mutual = source_id in target_visible
+            peer["mutual_visibility"] = mutual
+            if mutual:
+                mutual_count += 1
+                pair_key = tuple(sorted((source_id, target_id)))
+                if pair_key not in seen_mutual_pairs:
+                    seen_mutual_pairs.add(pair_key)
+                    counterpart = source_by_provider_id.get(target_id)
+                    counterpart_node = managed_by_provider_id.get(target_id)
+                    source_node = managed_by_provider_id.get(source_id)
+                    mutual_pairs.append(
+                        {
+                            "left_node_id": str(source_node.id) if source_node else None,
+                            "left_short_name": source_node.short_name if source_node else row.get("short_name"),
+                            "left_provider_node_id": source_id,
+                            "right_node_id": str(counterpart_node.id) if counterpart_node else None,
+                            "right_short_name": counterpart_node.short_name if counterpart_node else peer.get("managed_short_name"),
+                            "right_provider_node_id": target_id,
+                            "left_marks_right_favorite": target_id in favorite_targets,
+                            "right_marks_left_favorite": source_id in favorite_by_source.get(target_id, set()),
+                            "left_reachable": source_node.reachable if source_node else None,
+                            "right_reachable": counterpart_node.reachable if counterpart_node else None,
+                            "left_long_name": source_node.long_name if source_node else row.get("long_name"),
+                            "right_long_name": counterpart_node.long_name if counterpart_node else counterpart.get("long_name") if counterpart else None,
+                        }
+                    )
+            else:
+                source_node = managed_by_provider_id.get(source_id)
+                target_node = managed_by_provider_id.get(target_id)
+                one_way_pairs.append(
+                    {
+                        "source_node_id": str(source_node.id) if source_node else None,
+                        "source_short_name": source_node.short_name if source_node else row.get("short_name"),
+                        "source_provider_node_id": source_id,
+                        "target_node_id": str(target_node.id) if target_node else None,
+                        "target_short_name": target_node.short_name if target_node else peer.get("managed_short_name"),
+                        "target_provider_node_id": target_id,
+                        "source_marks_target_favorite": target_id in favorite_targets,
+                        "source_reachable": source_node.reachable if source_node else None,
+                        "target_reachable": target_node.reachable if target_node else None,
+                    }
+                )
+
+        managed_peer_count = len(row["managed_peers"])
+        favorite_count = sum(1 for peer in row["managed_peers"] if peer["is_favorite"])
+        row["managed_peer_count"] = managed_peer_count
+        row["favorite_peer_count"] = favorite_count
+        row["missing_favorite_count"] = managed_peer_count - favorite_count
+        row["unmanaged_peer_count"] = len(row["unmanaged_peers"])
+        row["mutual_peer_count"] = mutual_count
+        row["favorite_coverage_complete"] = managed_peer_count > 0 and favorite_count == managed_peer_count
+
+    source_rows.sort(key=lambda row: ((row.get("short_name") or row["provider_node_id"]).lower(), row["provider_node_id"]))
+    mutual_pairs.sort(
+        key=lambda row: (
+            (row.get("left_short_name") or row["left_provider_node_id"] or "").lower(),
+            (row.get("right_short_name") or row["right_provider_node_id"] or "").lower(),
+        )
+    )
+    one_way_pairs.sort(
+        key=lambda row: (
+            (row.get("source_short_name") or row["source_provider_node_id"] or "").lower(),
+            (row.get("target_short_name") or row["target_provider_node_id"] or "").lower(),
+        )
+    )
+
+    return {
+        "source_rows": source_rows,
+        "mutual_pairs": mutual_pairs,
+        "one_way_pairs": one_way_pairs,
+        "metrics": {
+            "nodes_total": len(nodes),
+            "nodes_with_zero_hop": sum(1 for row in source_rows if row["managed_peer_count"] or row["unmanaged_peer_count"]),
+            "managed_directional_links": sum(row["managed_peer_count"] for row in source_rows),
+            "mutual_pairs": len(mutual_pairs),
+            "favorite_gaps": sum(row["missing_favorite_count"] for row in source_rows),
+            "unmanaged_seen": sum(row["unmanaged_peer_count"] for row in source_rows),
+        },
+    }
 
 
 def _queue_bulk_nodedb_mutation_job(
@@ -1680,6 +1836,31 @@ def ui_sync_run(
 @app.get("/ui/sync/run")
 def ui_sync_run_get() -> RedirectResponse:
     return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/visibility", response_class=HTMLResponse)
+def visibility_page(
+    request: Request,
+    provider: str | None = "meshtastic",
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_session_user),
+) -> HTMLResponse:
+    nodes = InventoryService(db).list_nodes(provider=provider)
+    snapshot = _build_visibility_snapshot(nodes)
+    return templates.TemplateResponse(
+        request,
+        "visibility.html",
+        {
+            "user": user,
+            "provider": provider,
+            "source_rows": snapshot["source_rows"],
+            "mutual_pairs": snapshot["mutual_pairs"],
+            "one_way_pairs": snapshot["one_way_pairs"],
+            "metrics": snapshot["metrics"],
+            "ui_message": request.query_params.get("message"),
+            "ui_error": request.query_params.get("error"),
+        },
+    )
 
 
 @app.get("/nodes", response_class=HTMLResponse)

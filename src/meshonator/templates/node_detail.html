@@ -401,7 +401,7 @@ CLIENT_BASE</textarea>
     </form>
   </div>
   <div class="table-wrap"><table class="data-table">
-    <tr><th>ID</th><th>Name</th><th>Role</th><th>HW</th><th>Hops</th><th>SNR</th><th>Last Heard</th><th>Managed</th><th>Pinned</th></tr>
+    <tr><th>ID</th><th>Name</th><th>Role</th><th>HW</th><th>Hops</th><th>SNR</th><th>Last Heard</th><th>NodeDB favorite</th><th>Managed</th><th>Pinned</th></tr>
     {% for n in zero_hop_candidates %}
     <tr>
       <td>{{ n.id }}</td>
@@ -411,12 +411,13 @@ CLIENT_BASE</textarea>
       <td>{{ n.hops_away }}</td>
       <td>{{ n.snr }}</td>
       <td>{{ n.last_heard }}</td>
+      <td>{{ 'yes' if n.is_favorite else 'no' }}</td>
       <td>{% if n.managed_node_id %}<a href="/nodes/{{ n.managed_node_id }}">{{ n.managed_short_name or n.id }}</a>{% else %}no{% endif %}</td>
       <td>{% if n.managed_favorite is none %}-{% else %}{{ "yes" if n.managed_favorite else "no" }}{% endif %}</td>
     </tr>
     {% endfor %}
     {% if not zero_hop_candidates %}
-    <tr><td colspan="9" class="muted">No 0-hop entries in current node snapshot.</td></tr>
+    <tr><td colspan="10" class="muted">No 0-hop entries in current node snapshot.</td></tr>
     {% endif %}
   </table></div>
 </section>

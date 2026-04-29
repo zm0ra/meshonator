@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-shell">
+{% if ui_message %}<section class="panel-card status-banner status-banner-success"><p class="success-text">{{ ui_message }}</p></section>{% endif %}
+{% if ui_error %}<section class="panel-card status-banner status-banner-error"><p class="error">{{ ui_error }}</p></section>{% endif %}
+<header class="page-hero page-hero-ember">
+  <div>
+    <p class="eyebrow">Mesh visibility</p>
+    <h1>0-hop visibility and favorite coverage</h1>
+    <p class="page-summary">This tab shows which managed nodes see each other directly, where NodeDB favorites are already present, and where direct-neighbor coverage is still incomplete.</p>
+  </div>
+  <div class="hero-metrics">
+    <article class="hero-metric">
+      <span>Managed nodes</span>
+      <strong>{{ metrics.nodes_total }}</strong>
+    </article>
+    <article class="hero-metric">
+      <span>Direct 0-hop links</span>
+      <strong>{{ metrics.managed_directional_links }}</strong>
+    </article>
+    <article class="hero-metric">
+      <span>Favorite gaps</span>
+      <strong>{{ metrics.favorite_gaps }}</strong>
+    </article>
+  </div>
+</header>
+
+<section class="workspace-columns-wide">
+  <article class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Coverage</p>
+        <h2>Fleet summary</h2>
+      </div>
+    </div>
+    <ul class="subtle-list">
+      <li>
+        <strong>{{ metrics.nodes_with_zero_hop }}</strong>
+        <span class="muted">managed nodes currently have at least one 0-hop entry in their latest snapshot.</span>
+      </li>
+      <li>
+        <strong>{{ metrics.mutual_pairs }}</strong>
+        <span class="muted">pairs confirm mutual 0-hop visibility in both node snapshots.</span>
+      </li>
+      <li>
+        <strong>{{ metrics.unmanaged_seen }}</strong>
+        <span class="muted">0-hop entries are visible but not yet mapped to managed nodes.</span>
+      </li>
+    </ul>
+  </article>
+  <article class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Reading guide</p>
+        <h2>How to interpret this tab</h2>
+      </div>
+    </div>
+    <ul class="subtle-list">
+      <li><strong>NodeDB favorite</strong><span class="muted"> means the source node already marks that direct neighbor as favorite in its own `nodesInMesh` snapshot.</span></li>
+      <li><strong>Managed favorite</strong><span class="muted"> is Meshonator's own flag on the managed target node.</span></li>
+      <li><strong>Mutual visibility</strong><span class="muted"> means node A sees node B at 0 hop and node B also sees node A at 0 hop.</span></li>
+    </ul>
+  </article>
+</section>
+
+<section class="panel-card">
+  <div class="section-header">
+    <div>
+      <p class="eyebrow">Per source node</p>
+      <h2>Who each managed node sees at 0 hop</h2>
+    </div>
+  </div>
+  <div class="table-wrap"><table class="data-table">
+    <tr><th>Source node</th><th>Managed peers</th><th>NodeDB favorites</th><th>Missing favorites</th><th>Mutual peers</th><th>Unmanaged seen</th><th>Coverage</th></tr>
+    {% for row in source_rows %}
+    <tr>
+      <td>
+        <div class="node-identity">
+          <a class="node-link-compact" href="/nodes/{{ row.node_id }}">{{ row.short_name or row.provider_node_id }}</a>
+          <span class="node-name-line">{{ row.long_name or row.provider_node_id }}</span>
+          <span class="muted">{{ row.provider_node_id }}</span>
+        </div>
+      </td>
+      <td>{{ row.managed_peer_count }}</td>
+      <td>{{ row.favorite_peer_count }} / {{ row.managed_peer_count }}</td>
+      <td>{{ row.missing_favorite_count }}</td>
+      <td>{{ row.mutual_peer_count }} / {{ row.managed_peer_count }}</td>
+      <td>{{ row.unmanaged_peer_count }}</td>
+      <td>
+        {% if row.managed_peer_count == 0 %}
+        <span class="status-pill status-pill-neutral">No managed peers</span>
+        {% elif row.favorite_coverage_complete %}
+        <span class="status-pill status-pill-online">All direct peers favorite</span>
+        {% else %}
+        <span class="status-pill status-pill-offline">{{ row.missing_favorite_count }} direct peer{% if row.missing_favorite_count != 1 %}s{% endif %} missing favorite</span>
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <td colspan="7">
+        <details>
+          <summary>Open direct-neighbor detail</summary>
+          {% if row.managed_peers %}
+          <div class="table-wrap mt-1"><table class="data-table data-table-compact">
+            <tr><th>Target node</th><th>NodeDB favorite</th><th>Managed favorite</th><th>Mutual</th><th>Reachable</th><th>Last heard</th><th>SNR</th></tr>
+            {% for peer in row.managed_peers %}
+            <tr>
+              <td>
+                <div class="node-identity">
+                  <a class="node-link-compact" href="/nodes/{{ peer.managed_node_id }}">{{ peer.managed_short_name or peer.provider_node_id }}</a>
+                  <span class="node-name-line">{{ peer.managed_long_name or peer.long_name or peer.provider_node_id }}</span>
+                  <span class="muted">{{ peer.provider_node_id }}</span>
+                </div>
+              </td>
+              <td>{% if peer.is_favorite %}<span class="status-pill status-pill-online">Yes</span>{% else %}<span class="status-pill status-pill-offline">Missing</span>{% endif %}</td>
+              <td>{% if peer.managed_favorite %}<span class="status-pill status-pill-accent">Pinned in Meshonator</span>{% else %}<span class="status-pill status-pill-neutral">No</span>{% endif %}</td>
+              <td>{% if peer.mutual_visibility %}<span class="status-pill status-pill-online">Mutual</span>{% else %}<span class="status-pill status-pill-warning">One-way only</span>{% endif %}</td>
+              <td>{% if peer.managed_reachable %}<span class="status-pill status-pill-online">Online</span>{% else %}<span class="status-pill status-pill-offline">Offline</span>{% endif %}</td>
+              <td>{{ peer.last_heard or '-' }}</td>
+              <td>{{ peer.snr if peer.snr is not none else '-' }}</td>
+            </tr>
+            {% endfor %}
+          </table></div>
+          {% else %}
+          <p class="muted mt-1">This node has no managed 0-hop peers in the latest snapshot.</p>
+          {% endif %}
+          {% if row.unmanaged_peers %}
+          <div class="table-wrap mt-1"><table class="data-table data-table-compact">
+            <tr><th>Unmanaged 0-hop entry</th><th>NodeDB favorite</th><th>Role</th><th>Last heard</th><th>SNR</th></tr>
+            {% for peer in row.unmanaged_peers %}
+            <tr>
+              <td>{{ peer.short_name or peer.provider_node_id }} <span class="muted">{{ peer.provider_node_id }}</span></td>
+              <td>{% if peer.is_favorite %}Yes{% else %}No{% endif %}</td>
+              <td>{{ peer.role or '-' }}</td>
+              <td>{{ peer.last_heard or '-' }}</td>
+              <td>{{ peer.snr if peer.snr is not none else '-' }}</td>
+            </tr>
+            {% endfor %}
+          </table></div>
+          {% endif %}
+        </details>
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not source_rows %}
+    <tr><td colspan="7" class="muted">No managed nodes found for this provider.</td></tr>
+    {% endif %}
+  </table></div>
+</section>
+
+<section class="workspace-columns-wide">
+  <section class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Confirmed on both sides</p>
+        <h2>Mutual 0-hop pairs</h2>
+      </div>
+    </div>
+    <div class="table-wrap"><table class="data-table data-table-compact">
+      <tr><th>Left node</th><th>Right node</th><th>Left marks right favorite</th><th>Right marks left favorite</th></tr>
+      {% for pair in mutual_pairs %}
+      <tr>
+        <td><a href="/nodes/{{ pair.left_node_id }}">{{ pair.left_short_name or pair.left_provider_node_id }}</a> <span class="muted">{{ pair.left_provider_node_id }}</span></td>
+        <td><a href="/nodes/{{ pair.right_node_id }}">{{ pair.right_short_name or pair.right_provider_node_id }}</a> <span class="muted">{{ pair.right_provider_node_id }}</span></td>
+        <td>{% if pair.left_marks_right_favorite %}Yes{% else %}No{% endif %}</td>
+        <td>{% if pair.right_marks_left_favorite %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% if not mutual_pairs %}
+      <tr><td colspan="4" class="muted">No mutual 0-hop pairs found in current managed snapshots.</td></tr>
+      {% endif %}
+    </table></div>
+  </section>
+
+  <section class="panel-card">
+    <div class="section-header compact-header">
+      <div>
+        <p class="eyebrow">Not yet confirmed back</p>
+        <h2>One-way visibility</h2>
+      </div>
+    </div>
+    <div class="table-wrap"><table class="data-table data-table-compact">
+      <tr><th>Source node</th><th>Sees target</th><th>Source marks target favorite</th></tr>
+      {% for pair in one_way_pairs %}
+      <tr>
+        <td><a href="/nodes/{{ pair.source_node_id }}">{{ pair.source_short_name or pair.source_provider_node_id }}</a> <span class="muted">{{ pair.source_provider_node_id }}</span></td>
+        <td><a href="/nodes/{{ pair.target_node_id }}">{{ pair.target_short_name or pair.target_provider_node_id }}</a> <span class="muted">{{ pair.target_provider_node_id }}</span></td>
+        <td>{% if pair.source_marks_target_favorite %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% if not one_way_pairs %}
+      <tr><td colspan="3" class="muted">No one-way 0-hop visibility gaps found in current managed snapshots.</td></tr>
+      {% endif %}
+    </table></div>
+  </section>
+</section>
+</section>
+{% endblock %}

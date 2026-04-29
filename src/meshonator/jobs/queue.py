@@ -181,7 +181,19 @@ def _run_bulk_nodedb_job(job_id: UUID, registry: ProviderRegistry) -> None:
                     )
                     destination_fail += 1
 
-            jobs.finish(job_id, success=(destination_fail == 0))
+            sync_failed = []
+            if bool(payload.get("refresh_mode", False)) and not dry_run and destination_success > 0:
+                sync_results = SyncService(db, registry).sync_all(quick=True)
+                sync_failed = [item for item in sync_results if item.get("status") != "success"]
+                jobs.add_result(
+                    job_id=job_id,
+                    status="success" if not sync_failed else "failed",
+                    node_id=None,
+                    message=f"Auto-sync after favorite refresh: {len(sync_results)} endpoints, {len(sync_failed)} failed",
+                    details={"sync_results": sync_results},
+                )
+
+            jobs.finish(job_id, success=(destination_fail == 0 and len(sync_failed) == 0))
             AuditService(db).log(
                 actor=job.requested_by,
                 source=job.source,
@@ -194,6 +206,7 @@ def _run_bulk_nodedb_job(job_id: UUID, registry: ProviderRegistry) -> None:
                     "exclude_self": exclude_self,
                     "success_count": destination_success,
                     "fail_count": destination_fail,
+                    "auto_sync_fail_count": len(sync_failed),
                     "completed_at": datetime.now(UTC).isoformat(),
                 },
             )

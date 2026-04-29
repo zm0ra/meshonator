@@ -71,7 +71,7 @@ pip install -e .[dev]
 cp .env.example .env
 alembic upgrade head
 meshonator bootstrap
-uvicorn meshonator.api.app:app --reload --host 0.0.0.0 --port 8080
+uvicorn --app-dir src meshonator.api.app:app --reload --host 0.0.0.0 --port 8080
 ```
 
 UI: `http://localhost:8080`

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import socket
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -267,16 +268,24 @@ class MeshtasticProvider(Provider):
         # Meshonator manages one TCP endpoint per station; NodeDB mutations should
         # target the station connected on this endpoint (localNode).
         node = conn.localNode
-        if action == "set_favorite":
-            node.setFavorite(target_node_id)
-        elif action == "remove_favorite":
-            node.removeFavorite(target_node_id)
-        elif action == "remove_node":
-            node.removeNode(target_node_id)
+        started_at = time.monotonic()
+        try:
+            if action == "set_favorite":
+                node.setFavorite(target_node_id)
+            elif action == "remove_favorite":
+                node.removeFavorite(target_node_id)
+            elif action == "remove_node":
+                node.removeNode(target_node_id)
 
-        wait_for_ack = getattr(conn, "waitForAckNak", None)
-        if callable(wait_for_ack):
-            wait_for_ack()
+            wait_for_ack = getattr(conn, "waitForAckNak", None)
+            if callable(wait_for_ack):
+                wait_for_ack()
+        except Exception as exc:
+            elapsed_s = round(time.monotonic() - started_at, 2)
+            raise ProviderError(
+                f"Meshtastic NodeDB action {action} for {destination_node_id} -> {target_node_id} "
+                f"failed after {elapsed_s}s: {exc}"
+            ) from exc
 
         return {
             "destination_node_id": destination_node_id,

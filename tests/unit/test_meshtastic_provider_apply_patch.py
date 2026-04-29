@@ -111,6 +111,12 @@ class _FavoriteConn:
         self.wait_for_ack_calls += 1
 
 
+class _AckTimeoutConn(_FavoriteConn):
+    def waitForAckNak(self) -> None:
+        self.wait_for_ack_calls += 1
+        raise RuntimeError("Timed out waiting for an acknowledgment")
+
+
 def test_apply_patch_writes_local_module_and_channel_sections() -> None:
     provider = MeshtasticProvider()
     conn = _FakeConn()
@@ -173,5 +179,29 @@ def test_mutate_node_db_waits_for_ack() -> None:
     )
 
     assert result["mode"] == "apply"
+    assert conn.localNode.favorite_calls == [("set", "!d4a71330")]
+    assert conn.wait_for_ack_calls == 1
+
+
+def test_mutate_node_db_wraps_ack_errors() -> None:
+    provider = MeshtasticProvider()
+    conn = _AckTimeoutConn()
+
+    try:
+        provider.mutate_node_db(
+            conn=conn,
+            destination_node_id="!6911afb4",
+            action="set_favorite",
+            target_node_id="!d4a71330",
+            dry_run=False,
+        )
+    except Exception as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected ProviderError")
+
+    assert "Meshtastic NodeDB action set_favorite" in message
+    assert "!6911afb4 -> !d4a71330" in message
+    assert "Timed out waiting for an acknowledgment" in message
     assert conn.localNode.favorite_calls == [("set", "!d4a71330")]
     assert conn.wait_for_ack_calls == 1

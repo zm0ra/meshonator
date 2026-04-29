@@ -248,22 +248,32 @@ def _format_dashboard_timestamp(value: datetime | None) -> str:
     return value.astimezone(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
 
 
-def _normalize_timestamp(value: datetime | None) -> datetime | None:
+def _normalize_timestamp(value: datetime | str | None) -> datetime | None:
     if value is None:
         return None
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            value = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
 
 
-def _format_exact_timestamp(value: datetime | None) -> str:
+def _format_exact_timestamp(value: datetime | str | None) -> str:
     normalized = _normalize_timestamp(value)
     if normalized is None:
         return "Never"
     return normalized.strftime("%d %b %Y, %H:%M UTC")
 
 
-def _format_relative_timestamp(value: datetime | None) -> str:
+def _format_relative_timestamp(value: datetime | str | None) -> str:
     normalized = _normalize_timestamp(value)
     if normalized is None:
         return "Never"

@@ -103,7 +103,8 @@
             <th>Node</th>
             <th>Role</th>
             <th>Status</th>
-            <th>Last seen</th>
+            <th>Last heard</th>
+            <th>Last checked</th>
             <th>Location</th>
             <th>Actions</th>
           </tr>
@@ -127,6 +128,7 @@
             <td>{{ n.role or '-' }}</td>
             <td><span class="status-pill status-pill-{{ 'success' if n.reachable else 'warning' }}">{{ 'online' if n.reachable else 'offline' }}</span></td>
             <td><span title="{{ exact_timestamp(n.last_seen) }}">{{ relative_timestamp(n.last_seen) }}</span></td>
+            <td><span title="{{ exact_timestamp(endpoint.meta_json.get('last_transport_probe_at') if endpoint and endpoint.meta_json else None) }}">{{ relative_timestamp(endpoint.meta_json.get('last_transport_probe_at') if endpoint and endpoint.meta_json else None) }}</span></td>
             <td>
               {% if n.latitude is not none and n.longitude is not none %}
               {{ '%.5f'|format(n.latitude) }}, {{ '%.5f'|format(n.longitude) }}
@@ -146,6 +148,8 @@
                       <div class="detail-pair"><span>Firmware</span><strong>{{ n.firmware_version or '-' }}</strong></div>
                       <div class="detail-pair"><span>Hardware</span><strong>{{ n.hardware_model or '-' }}</strong></div>
                       <div class="detail-pair"><span>Primary endpoint</span><strong>{{ endpoint.endpoint if endpoint else '-' }}</strong></div>
+                      <div class="detail-pair"><span>Last heard</span><strong>{{ relative_timestamp(n.last_seen) }}</strong></div>
+                      <div class="detail-pair"><span>Last checked</span><strong>{{ relative_timestamp(endpoint.meta_json.get('last_transport_probe_at') if endpoint and endpoint.meta_json else None) }}</strong></div>
                       <div class="detail-pair"><span>Node number</span><strong>{{ n.node_num or '-' }}</strong></div>
                     </div>
                   </div>

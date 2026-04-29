@@ -104,7 +104,12 @@ class MeshtasticProvider(Provider):
             conn = None
             try:
                 with _socket_timeout(self.settings.provider_timeout_s):
-                    conn = TCPInterface(hostname=endpoint.host, portNumber=endpoint.port)
+                    interface_timeout = max(1, int(round(self.settings.provider_timeout_s)))
+                    conn = TCPInterface(
+                        hostname=endpoint.host,
+                        portNumber=endpoint.port,
+                        timeout=interface_timeout,
+                    )
                     try:
                         conn.waitForConfig()
                     except Exception:

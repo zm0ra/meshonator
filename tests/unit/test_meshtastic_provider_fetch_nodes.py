@@ -85,8 +85,9 @@ def test_connect_applies_provider_timeout_and_restores_socket_default(monkeypatc
     observed: dict[str, float | None] = {}
 
     class _FakeTcpInterface:
-        def __init__(self, hostname: str, portNumber: int) -> None:
+        def __init__(self, hostname: str, portNumber: int, timeout: int) -> None:
             observed["during_init"] = socket.getdefaulttimeout()
+            observed["timeout_arg"] = timeout
 
         def waitForConfig(self) -> None:
             observed["during_wait"] = socket.getdefaulttimeout()
@@ -101,12 +102,13 @@ def test_connect_applies_provider_timeout_and_restores_socket_default(monkeypatc
     assert isinstance(connection, _FakeTcpInterface)
     assert observed["during_init"] == 0.25
     assert observed["during_wait"] == 0.25
+    assert observed["timeout_arg"] == 1
     assert socket.getdefaulttimeout() == previous_timeout
 
 
 def test_connect_wraps_timeout_errors(monkeypatch) -> None:
     class _FakeTcpInterface:
-        def __init__(self, hostname: str, portNumber: int) -> None:
+        def __init__(self, hostname: str, portNumber: int, timeout: int) -> None:
             raise TimeoutError("timed out")
 
     monkeypatch.setattr("meshonator.providers.meshtastic.provider.TCPInterface", _FakeTcpInterface)
@@ -125,7 +127,7 @@ def test_connect_retries_after_initial_timeout(monkeypatch) -> None:
     attempts = {"count": 0}
 
     class _FakeTcpInterface:
-        def __init__(self, hostname: str, portNumber: int) -> None:
+        def __init__(self, hostname: str, portNumber: int, timeout: int) -> None:
             attempts["count"] += 1
             if attempts["count"] == 1:
                 raise TimeoutError("timed out")
@@ -141,3 +143,22 @@ def test_connect_retries_after_initial_timeout(monkeypatch) -> None:
 
     assert isinstance(connection, _FakeTcpInterface)
     assert attempts["count"] == 2
+
+
+def test_connect_passes_rounded_provider_timeout_to_meshtastic_interface(monkeypatch) -> None:
+    observed: dict[str, int] = {}
+
+    class _FakeTcpInterface:
+        def __init__(self, hostname: str, portNumber: int, timeout: int) -> None:
+            observed["timeout"] = timeout
+
+        def waitForConfig(self) -> None:
+            return None
+
+    monkeypatch.setattr("meshonator.providers.meshtastic.provider.TCPInterface", _FakeTcpInterface)
+    provider = MeshtasticProvider()
+    provider.settings.provider_timeout_s = 30.0
+
+    provider.connect(ProviderConnection(endpoint="tcp://172.30.105.37:4403", host="172.30.105.37", port=4403))
+
+    assert observed["timeout"] == 30

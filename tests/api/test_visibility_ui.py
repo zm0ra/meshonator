@@ -138,3 +138,5 @@ def test_visibility_page_filters_to_missing_favorites(client, db):
     assert "NODED" in body
     assert "NODEE" in body
     assert "No one-way 0-hop visibility gaps found in current managed snapshots." in body
+    assert "Align missing favorites" in body
+    assert 'name="selected_node_ids"' in body

@@ -785,6 +785,10 @@ details summary {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 0.75rem;
 }
+.visibility-align-form {
+  justify-content: flex-end;
+}
+
 
 .option-card {
   display: flex;

@@ -166,3 +166,54 @@ def test_refresh_fleet_nodedb_routing_favorites_queues_add_and_remove_jobs(clien
     assert payloads_by_action["remove_favorite"]["target_node_ids"] == ["!stale"]
     queued_destinations = set(payloads_by_action["set_favorite"]["destination_node_ids"])
     assert {str(source.id), str(target.id)}.issubset(queued_destinations)
+
+
+def test_refresh_fleet_nodedb_routing_favorites_can_scope_to_selected_sources(client, db):
+    bootstrap_admin(db, "admin", "admin", "admin")
+    existing_job_ids = {str(job.id) for job in db.query(JobModel).all()}
+    scoped_source = ManagedNodeModel(
+        provider="meshtastic",
+        provider_node_id="!src-scoped",
+        short_name="SRC-S",
+        role="ROUTER",
+        reachable=True,
+        raw_metadata={
+            "nodesInMesh": {
+                "!only-scoped": {"hopsAway": 0, "isFavorite": False, "user": {"id": "!only-scoped", "role": "ROUTER"}},
+            }
+        },
+    )
+    other_source = ManagedNodeModel(
+        provider="meshtastic",
+        provider_node_id="!src-other",
+        short_name="SRC-O",
+        role="ROUTER",
+        reachable=True,
+        raw_metadata={
+            "nodesInMesh": {
+                "!other-target": {"hopsAway": 0, "isFavorite": False, "user": {"id": "!other-target", "role": "ROUTER"}},
+            }
+        },
+    )
+    db.add_all([scoped_source, other_source])
+    db.commit()
+
+    cookies = _login(client)
+    response = client.post(
+        "/ui/nodes/nodedb/routing-favorites/refresh",
+        data={
+            "selected_node_ids": [str(scoped_source.id)],
+            "redirect_to": "/visibility?source_filter=with_gaps",
+        },
+        cookies=cookies,
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (302, 303)
+    assert response.headers["location"].startswith("/visibility?source_filter=with_gaps&message=")
+
+    jobs = [job for job in db.query(JobModel).all() if str(job.id) not in existing_job_ids]
+    assert len(jobs) == 1
+    payload = jobs[0].payload
+    assert payload["destination_node_ids"] == [str(scoped_source.id)]
+    assert payload["target_node_ids"] == ["!only-scoped"]

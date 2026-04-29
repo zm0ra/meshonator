@@ -1199,6 +1199,18 @@ def _queue_bulk_nodedb_mutation_job(
     return job
 
 
+def _redirect_with_status(base_url: str | None, *, message: str | None = None, error: str | None = None) -> RedirectResponse:
+    target = base_url or "/nodes"
+    if not target.startswith("/"):
+        target = "/nodes"
+    separator = "&" if "?" in target else "?"
+    if message:
+        return RedirectResponse(url=f"{target}{separator}message={quote_plus(message)}", status_code=303)
+    if error:
+        return RedirectResponse(url=f"{target}{separator}error={quote_plus(error)}", status_code=303)
+    return RedirectResponse(url=target, status_code=303)
+
+
 def _channels_to_patch(channels: list[Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in channels:
@@ -1971,6 +1983,15 @@ def visibility_page(
         "favorite_gaps": sum(row["missing_favorite_count"] for row in filtered_source_rows),
         "unmanaged_seen": sum(row["unmanaged_peer_count"] for row in filtered_source_rows),
     }
+    alignable_source_node_ids = [str(row["node_id"]) for row in filtered_source_rows if row.get("missing_favorite_count", 0) > 0]
+    visibility_params = [("provider", provider or "meshtastic")]
+    if q:
+        visibility_params.append(("q", q))
+    if source_filter != "all":
+        visibility_params.append(("source_filter", source_filter))
+    if relation_filter != "all":
+        visibility_params.append(("relation_filter", relation_filter))
+    visibility_current_url = f"/visibility?{urlencode(visibility_params)}"
     return templates.TemplateResponse(
         request,
         "visibility.html",
@@ -1985,6 +2006,8 @@ def visibility_page(
             "one_way_pairs": filtered_one_way_pairs,
             "metrics": filtered_metrics,
             "fleet_metrics": snapshot["metrics"],
+            "alignable_source_node_ids": alignable_source_node_ids,
+            "visibility_current_url": visibility_current_url,
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
         },
@@ -2554,6 +2577,8 @@ def ui_nodes_nodedb_routing_favorites(
 def ui_nodes_nodedb_routing_favorites_refresh(
     allowed_roles_text: str = Form("ROUTER\nROUTER_LATE\nCLIENT_BASE"),
     source_max_hops: int = Form(0),
+    selected_node_ids: list[str] = Form(default=[]),
+    redirect_to: str | None = Form(None),
     remove_unseen: bool = Form(False),
     dry_run: bool = Form(False),
     db: Session = Depends(get_db),
@@ -2562,18 +2587,25 @@ def ui_nodes_nodedb_routing_favorites_refresh(
     try:
         all_nodes = InventoryService(db).list_nodes()
         if not all_nodes:
-            return RedirectResponse(url="/nodes?error=No+managed+nodes+found", status_code=303)
+            return _redirect_with_status(redirect_to, error="No managed nodes found")
+
+        source_nodes = all_nodes
+        if selected_node_ids:
+            resolved_ids = {str(node_id) for node_id in _parse_uuid_list(selected_node_ids)}
+            source_nodes = [node for node in all_nodes if str(node.id) in resolved_ids]
+            if not source_nodes:
+                return _redirect_with_status(redirect_to, error="No selected source nodes found for favorite refresh")
 
         allowed_roles = set(_normalize_roles(allowed_roles_text))
-        destination_node_ids = [str(node.id) for node in all_nodes if node.id is not None]
+        destination_node_ids = [str(node.id) for node in source_nodes if node.id is not None]
         seen_target_ids = _collect_routing_favorite_targets(
             db=db,
-            source_nodes=all_nodes,
+            source_nodes=source_nodes,
             allowed_roles=allowed_roles,
             max_hops=source_max_hops,
         )
         current_favorite_ids = _collect_current_routing_favorite_targets(
-            source_nodes=all_nodes,
+            source_nodes=source_nodes,
             allowed_roles=allowed_roles,
         )
         stale_target_ids = sorted(set(current_favorite_ids) - set(seen_target_ids)) if remove_unseen else []
@@ -2605,16 +2637,14 @@ def ui_nodes_nodedb_routing_favorites_refresh(
             )
 
         if not created_jobs:
-            return RedirectResponse(
-                url="/nodes?error=No+0-hop+favorite+refresh+changes+detected",
-                status_code=303,
-            )
+            return _redirect_with_status(redirect_to, error="No 0-hop favorite refresh changes detected")
 
         AuditService(db).log(
             actor=user.username,
             source="ui",
             action="node.nodedb.favorite_refresh.queue",
             metadata={
+                "source_node_ids": destination_node_ids,
                 "source_max_hops": source_max_hops,
                 "allowed_roles": sorted(allowed_roles),
                 "remove_unseen": remove_unseen,
@@ -2629,10 +2659,9 @@ def ui_nodes_nodedb_routing_favorites_refresh(
         if stale_target_ids:
             message += f" and remove_favorite for {len(stale_target_ids)} stale targets"
         message += ". Job IDs: " + ", ".join(str(job.id) for job in created_jobs)
-        return RedirectResponse(url=f"/nodes?message={quote_plus(message)}", status_code=303)
+        return _redirect_with_status(redirect_to, message=message)
     except Exception as exc:
-        error = quote_plus(f"Favorite refresh failed: {exc}")
-        return RedirectResponse(url=f"/nodes?error={error}", status_code=303)
+        return _redirect_with_status(redirect_to, error=f"Favorite refresh failed: {exc}")
 
 
 @app.post("/ui/nodes/compare-sync")

@@ -96,17 +96,26 @@ class MeshtasticProvider(Provider):
     def connect(self, endpoint: ProviderConnection) -> Any:
         if TCPInterface is None:
             raise ProviderError("meshtastic python library unavailable")
-        try:
-            with _socket_timeout(self.settings.provider_timeout_s):
-                conn = TCPInterface(hostname=endpoint.host, portNumber=endpoint.port)
-                try:
-                    conn.waitForConfig()
-                except Exception:
-                    # Continue even if full config fetch is partial; caller can still use available data.
-                    pass
-            return conn
-        except Exception as exc:  # pragma: no cover
-            raise ProviderError(f"Failed to connect to {endpoint.endpoint}: {exc}") from exc
+        retries = max(0, int(self.settings.provider_connect_retries))
+        last_error: Exception | None = None
+
+        for _attempt in range(retries + 1):
+            conn = None
+            try:
+                with _socket_timeout(self.settings.provider_timeout_s):
+                    conn = TCPInterface(hostname=endpoint.host, portNumber=endpoint.port)
+                    try:
+                        conn.waitForConfig()
+                    except Exception:
+                        # Continue even if full config fetch is partial; caller can still use available data.
+                        pass
+                return conn
+            except Exception as exc:  # pragma: no cover
+                last_error = exc
+                self.disconnect(conn)
+
+        assert last_error is not None
+        raise ProviderError(f"Failed to connect to {endpoint.endpoint}: {last_error}") from last_error
 
     def disconnect(self, conn: Any) -> None:
         if conn is None:

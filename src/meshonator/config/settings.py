@@ -28,7 +28,8 @@ class Settings(BaseSettings):
     discovery_connect_timeout_s: float = 1.5
     scheduler_reachability_timeout_s: float = 2.0
     scheduler_reachability_failures_before_offline: int = 2
-    provider_timeout_s: float = 10.0
+    provider_timeout_s: float = 30.0
+    provider_connect_retries: int = 1
 
     cli_fallback_enabled: bool = True
     meshcore_enabled: bool = False

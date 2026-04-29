@@ -119,3 +119,25 @@ def test_connect_wraps_timeout_errors(monkeypatch) -> None:
         assert "timed out" in str(exc)
     else:
         raise AssertionError("Expected ProviderError")
+
+
+def test_connect_retries_after_initial_timeout(monkeypatch) -> None:
+    attempts = {"count": 0}
+
+    class _FakeTcpInterface:
+        def __init__(self, hostname: str, portNumber: int) -> None:
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise TimeoutError("timed out")
+
+        def waitForConfig(self) -> None:
+            return None
+
+    monkeypatch.setattr("meshonator.providers.meshtastic.provider.TCPInterface", _FakeTcpInterface)
+    provider = MeshtasticProvider()
+    provider.settings.provider_connect_retries = 1
+
+    connection = provider.connect(ProviderConnection(endpoint="tcp://172.30.105.37:4403", host="172.30.105.37", port=4403))
+
+    assert isinstance(connection, _FakeTcpInterface)
+    assert attempts["count"] == 2

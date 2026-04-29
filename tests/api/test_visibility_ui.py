@@ -85,3 +85,56 @@ def test_visibility_page_shows_mutual_links_and_favorite_gaps(client, db):
     assert "Mutual 0-hop pairs" in body
     assert "One-way visibility" in body
     assert "UNMAN" in body
+
+
+def test_visibility_page_filters_to_missing_favorites(client, db):
+    bootstrap_admin(db, "admin", "admin", "admin")
+    db.add_all(
+        [
+            ManagedNodeModel(
+                provider="meshtastic",
+                provider_node_id="!d",
+                short_name="NODED",
+                long_name="Node D",
+                reachable=True,
+                raw_metadata={
+                    "nodesInMesh": {
+                        "!e": {
+                            "hopsAway": 0,
+                            "isFavorite": False,
+                            "user": {"id": "!e", "shortName": "NODEE", "longName": "Node E", "role": "ROUTER"},
+                        }
+                    }
+                },
+            ),
+            ManagedNodeModel(
+                provider="meshtastic",
+                provider_node_id="!e",
+                short_name="NODEE",
+                long_name="Node E",
+                reachable=True,
+                raw_metadata={
+                    "nodesInMesh": {
+                        "!d": {
+                            "hopsAway": 0,
+                            "isFavorite": True,
+                            "user": {"id": "!d", "shortName": "NODED", "longName": "Node D", "role": "ROUTER"},
+                        }
+                    }
+                },
+            ),
+        ]
+    )
+    db.commit()
+
+    cookies = _login(client)
+    response = client.get("/visibility?q=NODED&source_filter=with_gaps&relation_filter=missing_favorite", cookies=cookies)
+
+    assert response.status_code == 200
+    body = response.text
+    assert "Only favorite gaps" in body
+    assert "Missing favorite only" in body
+    assert "1 direct peer missing favorite" in body
+    assert "NODED" in body
+    assert "NODEE" in body
+    assert "No one-way 0-hop visibility gaps found in current managed snapshots." in body

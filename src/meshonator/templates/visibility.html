@@ -25,6 +25,37 @@
   </div>
 </header>
 
+<section class="panel-card">
+  <form method="get" action="/visibility" class="filter-bar">
+    <input type="hidden" name="provider" value="{{ provider or 'meshtastic' }}" />
+    <label>Search node or peer
+      <input type="search" name="q" value="{{ query or '' }}" placeholder="NODEA, !a1f9eab4, ROUTER" />
+    </label>
+    <label>Source view
+      <select name="source_filter">
+        <option value="all" {% if source_filter == 'all' %}selected{% endif %}>All sources</option>
+        <option value="with_gaps" {% if source_filter == 'with_gaps' %}selected{% endif %}>Only favorite gaps</option>
+        <option value="complete" {% if source_filter == 'complete' %}selected{% endif %}>Only fully covered</option>
+        <option value="with_mutual" {% if source_filter == 'with_mutual' %}selected{% endif %}>Only sources with mutual links</option>
+      </select>
+    </label>
+    <label>Relation focus
+      <select name="relation_filter">
+        <option value="all" {% if relation_filter == 'all' %}selected{% endif %}>All relations</option>
+        <option value="mutual" {% if relation_filter == 'mutual' %}selected{% endif %}>Mutual only</option>
+        <option value="one_way" {% if relation_filter == 'one_way' %}selected{% endif %}>One-way only</option>
+        <option value="favorite_only" {% if relation_filter == 'favorite_only' %}selected{% endif %}>NodeDB favorite only</option>
+        <option value="missing_favorite" {% if relation_filter == 'missing_favorite' %}selected{% endif %}>Missing favorite only</option>
+      </select>
+    </label>
+    <div class="filter-actions">
+      <button type="submit">Apply filters</button>
+      <a class="ghost-button" href="/visibility?provider={{ provider or 'meshtastic' }}">Reset</a>
+    </div>
+  </form>
+  <p class="muted">Showing {{ metrics.nodes_total }} source nodes from {{ fleet_metrics.nodes_total }} managed nodes for the current filter.</p>
+</section>
+
 <section class="workspace-columns-wide">
   <article class="panel-card">
     <div class="section-header compact-header">
@@ -143,7 +174,7 @@
     </tr>
     {% endfor %}
     {% if not source_rows %}
-    <tr><td colspan="7" class="muted">No managed nodes found for this provider.</td></tr>
+      <tr><td colspan="7" class="muted">No managed nodes match the current filter.</td></tr>
     {% endif %}
   </table></div>
 </section>

@@ -98,6 +98,28 @@ DATABASE_URL=postgresql+psycopg://meshonator:meshonator@localhost:5432/meshonato
 Leave this process running while using discovery/sync in the UI.
 Dashboard displays worker heartbeat (online/offline, host, pid, last heartbeat, last claimed/completed job).
 
+## Production web deploy
+
+Approved production path for the `web` service:
+
+```bash
+./scripts/deploy_prod_web.sh
+```
+
+Optional route verification after deploy:
+
+```bash
+./scripts/deploy_prod_web.sh /visibility
+```
+
+What it does:
+
+- SSH to `root@docker`
+- refresh the production checkout from `origin/main` without touching host-local `docker-compose.yml`
+- run `docker compose build --no-cache web`
+- recreate only `web`
+- verify container health and, optionally, that a specific route exists in the live runtime
+
 ## UI-first workflow
 
 Dashboard is the primary workflow:
@@ -206,7 +228,7 @@ Example response includes service and provider health status.
 ## Scheduled fleet checks
 
 - `SCHEDULER_REACHABILITY_CRON` runs lightweight ICMP ping checks against known hosts to refresh online/offline state without opening a full Meshtastic session.
-- `SCHEDULER_REACHABILITY_TIMEOUT_S` controls the per-endpoint TCP probe timeout.
+- `SCHEDULER_REACHABILITY_TIMEOUT_S` controls the per-endpoint ICMP probe timeout.
 - `SCHEDULER_SYNC_CRON` runs a heavier quick sync to refresh node inventory and mesh metadata.
 
 Default behavior:

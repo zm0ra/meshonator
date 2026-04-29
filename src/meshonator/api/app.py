@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -1842,21 +1843,148 @@ def ui_sync_run_get() -> RedirectResponse:
 def visibility_page(
     request: Request,
     provider: str | None = "meshtastic",
+    q: str = "",
+    source_filter: str = "all",
+    relation_filter: str = "all",
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_session_user),
 ) -> HTMLResponse:
     nodes = InventoryService(db).list_nodes(provider=provider)
     snapshot = _build_visibility_snapshot(nodes)
+    query = q.strip().lower()
+    allowed_source_filters = {"all", "with_gaps", "complete", "with_mutual"}
+    allowed_relation_filters = {"all", "mutual", "one_way", "favorite_only", "missing_favorite"}
+    source_filter = source_filter if source_filter in allowed_source_filters else "all"
+    relation_filter = relation_filter if relation_filter in allowed_relation_filters else "all"
+
+    def _peer_matches_query(peer: dict[str, Any]) -> bool:
+        if not query:
+            return True
+        values = [
+            str(peer.get("provider_node_id") or "").lower(),
+            str(peer.get("short_name") or "").lower(),
+            str(peer.get("long_name") or "").lower(),
+            str(peer.get("managed_short_name") or "").lower(),
+            str(peer.get("managed_long_name") or "").lower(),
+            str(peer.get("role") or "").lower(),
+        ]
+        return any(query in value for value in values)
+
+    def _managed_peer_matches_relation(peer: dict[str, Any]) -> bool:
+        if relation_filter == "mutual":
+            return peer.get("mutual_visibility") is True
+        if relation_filter == "one_way":
+            return peer.get("mutual_visibility") is not True
+        if relation_filter == "favorite_only":
+            return peer.get("is_favorite") is True
+        if relation_filter == "missing_favorite":
+            return peer.get("is_favorite") is not True
+        return True
+
+    filtered_source_rows: list[dict[str, Any]] = []
+    for source_row in snapshot["source_rows"]:
+        row = copy.deepcopy(source_row)
+        source_matches_query = not query or any(
+            query in str(value or "").lower()
+            for value in [row.get("provider_node_id"), row.get("short_name"), row.get("long_name")]
+        )
+        original_managed_peers = row["managed_peers"]
+        original_unmanaged_peers = row["unmanaged_peers"]
+        row["managed_peers"] = [
+            peer
+            for peer in original_managed_peers
+            if _managed_peer_matches_relation(peer) and (source_matches_query or _peer_matches_query(peer))
+        ]
+        row["unmanaged_peers"] = [
+            peer for peer in original_unmanaged_peers if source_matches_query or _peer_matches_query(peer)
+        ]
+        row["managed_peer_count"] = len(row["managed_peers"])
+        row["favorite_peer_count"] = sum(1 for peer in row["managed_peers"] if peer.get("is_favorite") is True)
+        row["missing_favorite_count"] = row["managed_peer_count"] - row["favorite_peer_count"]
+        row["unmanaged_peer_count"] = len(row["unmanaged_peers"])
+        row["mutual_peer_count"] = sum(1 for peer in row["managed_peers"] if peer.get("mutual_visibility") is True)
+        row["favorite_coverage_complete"] = row["managed_peer_count"] > 0 and row["favorite_peer_count"] == row["managed_peer_count"]
+
+        if source_filter == "with_gaps" and row["missing_favorite_count"] == 0:
+            continue
+        if source_filter == "complete" and not row["favorite_coverage_complete"]:
+            continue
+        if source_filter == "with_mutual" and row["mutual_peer_count"] == 0:
+            continue
+        if query and not source_matches_query and not row["managed_peers"] and not row["unmanaged_peers"]:
+            continue
+        filtered_source_rows.append(row)
+
+    visible_source_ids = {row["provider_node_id"] for row in filtered_source_rows}
+
+    def _pair_matches_query(values: list[str | None]) -> bool:
+        if not query:
+            return True
+        return any(query in str(value or "").lower() for value in values)
+
+    filtered_mutual_pairs = [
+        pair
+        for pair in snapshot["mutual_pairs"]
+        if (not visible_source_ids or pair.get("left_provider_node_id") in visible_source_ids or pair.get("right_provider_node_id") in visible_source_ids)
+        and _pair_matches_query(
+            [
+                pair.get("left_provider_node_id"),
+                pair.get("left_short_name"),
+                pair.get("left_long_name"),
+                pair.get("right_provider_node_id"),
+                pair.get("right_short_name"),
+                pair.get("right_long_name"),
+            ]
+        )
+        and (
+            relation_filter in {"all", "mutual"}
+            or (relation_filter == "favorite_only" and (pair.get("left_marks_right_favorite") or pair.get("right_marks_left_favorite")))
+            or (relation_filter == "missing_favorite" and not (pair.get("left_marks_right_favorite") and pair.get("right_marks_left_favorite")))
+        )
+    ]
+    filtered_one_way_pairs = [
+        pair
+        for pair in snapshot["one_way_pairs"]
+        if pair.get("source_provider_node_id") in visible_source_ids
+        and _pair_matches_query(
+            [
+                pair.get("source_provider_node_id"),
+                pair.get("source_short_name"),
+                pair.get("target_provider_node_id"),
+                pair.get("target_short_name"),
+            ]
+        )
+        and (
+            relation_filter in {"all", "one_way"}
+            or (relation_filter == "favorite_only" and pair.get("source_marks_target_favorite"))
+            or (relation_filter == "missing_favorite" and not pair.get("source_marks_target_favorite"))
+        )
+    ]
+
+    filtered_metrics = {
+        "nodes_total": len(filtered_source_rows),
+        "nodes_with_zero_hop": sum(
+            1 for row in filtered_source_rows if row["managed_peer_count"] or row["unmanaged_peer_count"]
+        ),
+        "managed_directional_links": sum(row["managed_peer_count"] for row in filtered_source_rows),
+        "mutual_pairs": len(filtered_mutual_pairs),
+        "favorite_gaps": sum(row["missing_favorite_count"] for row in filtered_source_rows),
+        "unmanaged_seen": sum(row["unmanaged_peer_count"] for row in filtered_source_rows),
+    }
     return templates.TemplateResponse(
         request,
         "visibility.html",
         {
             "user": user,
             "provider": provider,
-            "source_rows": snapshot["source_rows"],
-            "mutual_pairs": snapshot["mutual_pairs"],
-            "one_way_pairs": snapshot["one_way_pairs"],
-            "metrics": snapshot["metrics"],
+            "query": q,
+            "source_filter": source_filter,
+            "relation_filter": relation_filter,
+            "source_rows": filtered_source_rows,
+            "mutual_pairs": filtered_mutual_pairs,
+            "one_way_pairs": filtered_one_way_pairs,
+            "metrics": filtered_metrics,
+            "fleet_metrics": snapshot["metrics"],
             "ui_message": request.query_params.get("message"),
             "ui_error": request.query_params.get("error"),
         },

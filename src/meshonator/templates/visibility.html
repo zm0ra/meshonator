@@ -101,10 +101,22 @@
       <h2>Who each managed node sees at 0 hop</h2>
     </div>
   </div>
-  <div class="table-wrap"><table class="data-table">
+  <div class="table-wrap"><table class="data-table visibility-source-table">
+    <colgroup>
+      <col class="visibility-source-col-main" />
+      <col class="visibility-source-col-metric" />
+      <col class="visibility-source-col-metric" />
+      <col class="visibility-source-col-metric" />
+      <col class="visibility-source-col-metric" />
+      <col class="visibility-source-col-metric" />
+      <col class="visibility-source-col-coverage" />
+    </colgroup>
+    <thead>
     <tr><th>Source node</th><th>Managed peers</th><th>NodeDB favorites</th><th>Missing favorites</th><th>Mutual peers</th><th>Unmanaged seen</th><th>Coverage</th></tr>
+    </thead>
     {% for row in source_rows %}
-    <tr>
+    <tbody class="visibility-source-group">
+    <tr class="visibility-source-row">
       <td>
         <div class="node-identity">
           <a class="node-link-compact" href="/nodes/{{ row.node_id }}">{{ row.short_name or row.provider_node_id }}</a>
@@ -127,10 +139,11 @@
         {% endif %}
       </td>
     </tr>
-    <tr>
+    <tr class="visibility-source-detail-row">
       <td colspan="7">
-        <details>
+        <details class="visibility-source-details">
           <summary>Open direct-neighbor detail</summary>
+          <div class="visibility-source-detail-panel">
           {% if row.managed_peers %}
           <div class="table-wrap mt-1"><table class="data-table data-table-compact">
             <tr><th>Target node</th><th>NodeDB favorite</th><th>Managed favorite</th><th>Mutual</th><th>Reachable</th><th>Last heard</th><th>SNR</th></tr>
@@ -169,12 +182,16 @@
             {% endfor %}
           </table></div>
           {% endif %}
+          </div>
         </details>
       </td>
     </tr>
+    </tbody>
     {% endfor %}
     {% if not source_rows %}
+    <tbody>
       <tr><td colspan="7" class="muted">No managed nodes match the current filter.</td></tr>
+    </tbody>
     {% endif %}
   </table></div>
 </section>

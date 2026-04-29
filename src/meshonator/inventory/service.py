@@ -126,7 +126,7 @@ class InventoryService:
         self.db.commit()
         return count
 
-    def refresh_transport_reachability(self, timeout: float = 1.0) -> dict:
+    def refresh_transport_reachability(self, timeout: float = 1.0, failures_before_offline: int = 2) -> dict:
         now = datetime.now(timezone.utc)
         endpoint_rows = list(self.db.scalars(select(ProviderEndpointModel).order_by(ProviderEndpointModel.host.asc())).all())
         endpoint_state: dict[str, bool] = {}
@@ -134,12 +134,21 @@ class InventoryService:
         endpoints_offline = 0
 
         for endpoint_row in endpoint_rows:
+            previous_reachable = bool(endpoint_row.reachable)
             probe = tcp_probe(endpoint_row.host, endpoint_row.port, timeout=timeout)
             is_open = bool(probe.get("is_open"))
-            endpoint_row.reachable = is_open
             matching_node_endpoints = list(
                 self.db.scalars(select(NodeEndpointModel).where(NodeEndpointModel.endpoint == endpoint_row.endpoint)).all()
             )
+            meta_json = dict(endpoint_row.meta_json) if isinstance(endpoint_row.meta_json, dict) else {}
+            failures = int(meta_json.get("consecutive_transport_failures", 0) or 0)
+            if is_open:
+                failures = 0
+                effective_reachable = True
+            else:
+                failures += 1
+                effective_reachable = previous_reachable and failures < max(1, failures_before_offline)
+            endpoint_row.reachable = effective_reachable
             if is_open:
                 endpoint_row.last_seen = now
                 for node_endpoint in matching_node_endpoints:
@@ -148,16 +157,19 @@ class InventoryService:
             else:
                 for node_endpoint in matching_node_endpoints:
                     node_endpoint.last_seen = now
-                endpoints_offline += 1
-            meta_json = dict(endpoint_row.meta_json) if isinstance(endpoint_row.meta_json, dict) else {}
+                if not effective_reachable:
+                    endpoints_offline += 1
+                else:
+                    endpoints_online += 1
             meta_json.update(
                 {
                     "last_transport_probe_at": now.isoformat(),
                     "last_transport_probe": probe,
+                    "consecutive_transport_failures": failures,
                 }
             )
             endpoint_row.meta_json = meta_json
-            endpoint_state[endpoint_row.endpoint] = is_open
+            endpoint_state[endpoint_row.endpoint] = effective_reachable
 
         node_rows = list(
             self.db.scalars(select(ManagedNodeModel).options(selectinload(ManagedNodeModel.endpoints))).all()

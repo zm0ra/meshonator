@@ -73,8 +73,11 @@ class SyncService:
         )
         return out
 
-    def refresh_reachability(self, timeout: float) -> dict:
-        result = self.inventory.refresh_transport_reachability(timeout=timeout)
+    def refresh_reachability(self, timeout: float, failures_before_offline: int = 2) -> dict:
+        result = self.inventory.refresh_transport_reachability(
+            timeout=timeout,
+            failures_before_offline=failures_before_offline,
+        )
         self.audit.log(
             actor="scheduler",
             source="scheduler",

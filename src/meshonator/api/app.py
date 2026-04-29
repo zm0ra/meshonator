@@ -79,7 +79,10 @@ templates = Jinja2Templates(directory="src/meshonator/templates")
 
 def _scheduled_reachability() -> None:
     with Session(engine) as db:
-        SyncService(db, registry).refresh_reachability(timeout=settings.scheduler_reachability_timeout_s)
+        SyncService(db, registry).refresh_reachability(
+            timeout=settings.scheduler_reachability_timeout_s,
+            failures_before_offline=settings.scheduler_reachability_failures_before_offline,
+        )
 
 
 def _scheduled_sync() -> None:

@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     default_provider: str = "meshtastic"
     meshtastic_default_tcp_port: int = 4403
     discovery_connect_timeout_s: float = 1.5
-    scheduler_reachability_timeout_s: float = 1.0
+    scheduler_reachability_timeout_s: float = 2.0
+    scheduler_reachability_failures_before_offline: int = 2
     provider_timeout_s: float = 10.0
 
     cli_fallback_enabled: bool = True

@@ -1991,6 +1991,62 @@ def visibility_page(
     )
 
 
+def _build_nodes_page_context(
+    *,
+    all_nodes: list[ManagedNodeModel],
+    visible_nodes: list[ManagedNodeModel],
+    user: CurrentUser,
+    provider: str | None,
+    q: str,
+    status: str,
+    favorites: str,
+    location: str,
+    role: str,
+    selected_node_ids: list[str] | None = None,
+    ui_message: str | None = None,
+    ui_error: str | None = None,
+    compare_source_id: str | None = None,
+    compare_target_ids: list[str] | None = None,
+    compare_ignore_location: bool = False,
+    compare_use_alignment_profile: bool = False,
+    compare_results: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    normalized_selected_ids = [value for value in (selected_node_ids or []) if value]
+    nodes_by_id = {str(node.id): node for node in all_nodes}
+    selected_nodes = [nodes_by_id[node_id] for node_id in normalized_selected_ids if node_id in nodes_by_id]
+    context = {
+        "user": user,
+        "nodes": visible_nodes,
+        "all_nodes": all_nodes,
+        "selected_nodes": selected_nodes,
+        "selected_node_ids": normalized_selected_ids,
+        "provider": provider,
+        "providers": sorted({node.provider for node in all_nodes if node.provider}),
+        "roles": sorted({str(node.role).upper() for node in all_nodes if node.role}),
+        "filters": {
+            "q": q,
+            "status": status,
+            "favorites": favorites,
+            "location": location,
+            "role": role,
+        },
+        "counts": {
+            "online": len([node for node in visible_nodes if node.reachable]),
+            "offline": len([node for node in visible_nodes if not node.reachable]),
+            "mapped": len([node for node in visible_nodes if node.latitude is not None and node.longitude is not None]),
+            "selected": len(selected_nodes),
+        },
+        "ui_message": ui_message,
+        "ui_error": ui_error,
+        "compare_source_id": compare_source_id,
+        "compare_target_ids": compare_target_ids or [],
+        "compare_ignore_location": compare_ignore_location,
+        "compare_use_alignment_profile": compare_use_alignment_profile,
+        "compare_results": compare_results or [],
+    }
+    return context
+
+
 @app.get("/nodes", response_class=HTMLResponse)
 def nodes_page(
     request: Request,
@@ -2035,37 +2091,23 @@ def nodes_page(
         if normalized_role and str(node.role or "").upper() != normalized_role:
             continue
         nodes.append(node)
-    selected_node_ids = [value for value in request.query_params.getlist("selected_node_ids") if value]
-    nodes_by_id = {str(node.id): node for node in all_nodes}
-    selected_nodes = [nodes_by_id[node_id] for node_id in selected_node_ids if node_id in nodes_by_id]
     return templates.TemplateResponse(
         request,
         "nodes.html",
-        {
-            "user": user,
-            "nodes": nodes,
-            "all_nodes": all_nodes,
-            "selected_nodes": selected_nodes,
-            "selected_node_ids": selected_node_ids,
-            "provider": provider,
-            "providers": sorted({node.provider for node in svc.list_nodes()}),
-            "roles": sorted({str(node.role).upper() for node in all_nodes if node.role}),
-            "filters": {
-                "q": q,
-                "status": status,
-                "favorites": favorites,
-                "location": location,
-                "role": role,
-            },
-            "counts": {
-                "online": len([node for node in nodes if node.reachable]),
-                "offline": len([node for node in nodes if not node.reachable]),
-                "mapped": len([node for node in nodes if node.latitude is not None and node.longitude is not None]),
-                "selected": len(selected_nodes),
-            },
-            "ui_message": request.query_params.get("message"),
-            "ui_error": request.query_params.get("error"),
-        },
+        _build_nodes_page_context(
+            all_nodes=all_nodes,
+            visible_nodes=nodes,
+            user=user,
+            provider=provider,
+            q=q,
+            status=status,
+            favorites=favorites,
+            location=location,
+            role=role,
+            selected_node_ids=request.query_params.getlist("selected_node_ids"),
+            ui_message=request.query_params.get("message"),
+            ui_error=request.query_params.get("error"),
+        ),
     )
 
 
@@ -2097,6 +2139,11 @@ def nodes_batch_configure_page(
     )
 
 
+@app.get("/ui/nodes/compare")
+def ui_nodes_compare_get() -> RedirectResponse:
+    return RedirectResponse(url="/nodes?error=Open+compare+from+the+Nodes+page+selection+builder", status_code=303)
+
+
 @app.post("/ui/nodes/compare", response_class=HTMLResponse)
 def ui_nodes_compare(
     request: Request,
@@ -2115,13 +2162,18 @@ def ui_nodes_compare(
         return templates.TemplateResponse(
             request,
             "nodes.html",
-            {
-                "user": user,
-                "nodes": nodes,
-                "provider": None,
-                "ui_error": "Source node not found",
-                "ui_message": None,
-            },
+            _build_nodes_page_context(
+                all_nodes=nodes,
+                visible_nodes=nodes,
+                user=user,
+                provider=None,
+                q="",
+                status="all",
+                favorites="all",
+                location="all",
+                role="",
+                ui_error="Source node not found",
+            ),
             status_code=400,
         )
     parsed_target_ids = [str(node_id) for node_id in _parse_uuid_list(target_node_ids)]
@@ -2130,17 +2182,22 @@ def ui_nodes_compare(
         return templates.TemplateResponse(
             request,
             "nodes.html",
-            {
-                "user": user,
-                "nodes": nodes,
-                "provider": None,
-                "ui_error": "Select at least one target node",
-                "ui_message": None,
-                "compare_source_id": str(source_node_id),
-                "compare_target_ids": parsed_target_ids,
-                "compare_ignore_location": ignore_location,
-                "compare_use_alignment_profile": use_alignment_profile,
-            },
+            _build_nodes_page_context(
+                all_nodes=nodes,
+                visible_nodes=nodes,
+                user=user,
+                provider=None,
+                q="",
+                status="all",
+                favorites="all",
+                location="all",
+                role="",
+                ui_error="Select at least one target node",
+                compare_source_id=str(source_node_id),
+                compare_target_ids=parsed_target_ids,
+                compare_ignore_location=ignore_location,
+                compare_use_alignment_profile=use_alignment_profile,
+            ),
             status_code=400,
         )
     results = _compare_node_configs(source_node, targets, ignore_location=ignore_location)
@@ -2173,18 +2230,24 @@ def ui_nodes_compare(
     return templates.TemplateResponse(
         request,
         "nodes.html",
-        {
-            "user": user,
-            "nodes": nodes,
-            "provider": None,
-            "ui_message": f"Compared {compared} target nodes (different: {different}, same: {same}, skipped: {skipped})",
-            "ui_error": None,
-            "compare_source_id": str(source_node_id),
-            "compare_target_ids": [str(t.id) for t in targets],
-            "compare_ignore_location": ignore_location,
-            "compare_use_alignment_profile": use_alignment_profile,
-            "compare_results": results,
-        },
+        _build_nodes_page_context(
+            all_nodes=nodes,
+            visible_nodes=nodes,
+            user=user,
+            provider=None,
+            q="",
+            status="all",
+            favorites="all",
+            location="all",
+            role="",
+            selected_node_ids=[str(source_node_id)] + [str(t.id) for t in targets],
+            ui_message=f"Compared {compared} target nodes (different: {different}, same: {same}, skipped: {skipped})",
+            compare_source_id=str(source_node_id),
+            compare_target_ids=[str(t.id) for t in targets],
+            compare_ignore_location=ignore_location,
+            compare_use_alignment_profile=use_alignment_profile,
+            compare_results=results,
+        ),
     )
 
 

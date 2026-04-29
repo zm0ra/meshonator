@@ -76,6 +76,7 @@
     <p class="table-secondary">Collect the union of all currently seen 0-hop neighbors across managed nodes and queue a fleet-wide NodeDB favorite refresh.</p>
     <input type="hidden" name="source_max_hops" value="0" />
     <input type="hidden" name="allowed_roles_text" value="ROUTER&#10;ROUTER_LATE&#10;CLIENT_BASE" />
+    <p class="muted">This is the fleet-wide button that queues favorite refresh so every managed node gets the union of current 0-hop neighbors. Review gaps first in <a href="/visibility?source_filter=with_gaps&relation_filter=missing_favorite">Visibility</a>.</p>
     <div class="button-row">
       <label><input type="checkbox" name="remove_unseen" value="true" /> Remove favorite nodes no longer seen at 0-hop</label>
       <label><input type="checkbox" name="dry_run" value="true" /> Dry run</label>

@@ -205,7 +205,7 @@ Example response includes service and provider health status.
 
 ## Scheduled fleet checks
 
-- `SCHEDULER_REACHABILITY_CRON` runs lightweight TCP probes against known endpoints to refresh online/offline state without opening a full Meshtastic session.
+- `SCHEDULER_REACHABILITY_CRON` runs lightweight ICMP ping checks against known hosts to refresh online/offline state without opening a full Meshtastic session.
 - `SCHEDULER_REACHABILITY_TIMEOUT_S` controls the per-endpoint TCP probe timeout.
 - `SCHEDULER_SYNC_CRON` runs a heavier quick sync to refresh node inventory and mesh metadata.
 
@@ -214,7 +214,7 @@ Default behavior:
 - reachability probe every 5 minutes
 - quick sync every hour
 
-This keeps the dashboard status fresh without repeatedly opening full radio sessions just to answer whether an endpoint is up.
+This keeps the dashboard status fresh with cheap host liveness checks, while the slower sync still refreshes actual mesh state and node details on a separate cadence.
 
 ## Build footer metadata
 

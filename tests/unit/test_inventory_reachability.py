@@ -40,8 +40,8 @@ def test_refresh_transport_reachability_updates_endpoints_and_nodes(db, monkeypa
     db.commit()
 
     monkeypatch.setattr(
-        "meshonator.inventory.service.tcp_probe",
-        lambda host, port, timeout: {"is_open": True, "latency_ms": 12.5, "timeout_s": timeout},
+        "meshonator.inventory.service.ping_probe",
+        lambda host, timeout: {"is_online": True, "latency_ms": 12.5, "timeout_s": timeout, "method": "icmp"},
     )
 
     result = InventoryService(db).refresh_transport_reachability(timeout=0.75)
@@ -55,7 +55,7 @@ def test_refresh_transport_reachability_updates_endpoints_and_nodes(db, monkeypa
     assert stored_node_endpoint is not None
     assert stored_endpoint.reachable is True
     assert stored_endpoint.last_seen is not None
-    assert stored_endpoint.meta_json["last_transport_probe"]["is_open"] is True
+    assert stored_endpoint.meta_json["last_transport_probe"]["is_online"] is True
     assert stored_node.reachable is True
     assert stored_node_endpoint.last_seen is not None
     assert result["endpoints_online"] == 1
@@ -118,8 +118,8 @@ def test_refresh_transport_reachability_requires_two_failures_before_offline(db,
     db.commit()
 
     monkeypatch.setattr(
-        "meshonator.inventory.service.tcp_probe",
-        lambda host, port, timeout: {"is_open": False, "latency_ms": 500.0, "timeout_s": timeout, "reason": "connect_ex_11"},
+        "meshonator.inventory.service.ping_probe",
+        lambda host, timeout: {"is_online": False, "latency_ms": 500.0, "timeout_s": timeout, "reason": "exit_1", "method": "icmp"},
     )
 
     svc = InventoryService(db)

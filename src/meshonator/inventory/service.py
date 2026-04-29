@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from meshonator.db.models import ManagedNodeModel, NodeEndpointModel, ProviderEndpointModel
 from meshonator.domain.models import ManagedNode
-from meshonator.providers.utils.tcp_scan import tcp_probe
+from meshonator.providers.utils.tcp_scan import ping_probe
 from meshonator.providers.utils.json_safe import to_json_safe
 
 
@@ -135,8 +135,8 @@ class InventoryService:
 
         for endpoint_row in endpoint_rows:
             previous_reachable = bool(endpoint_row.reachable)
-            probe = tcp_probe(endpoint_row.host, endpoint_row.port, timeout=timeout)
-            is_open = bool(probe.get("is_open"))
+            probe = ping_probe(endpoint_row.host, timeout=timeout)
+            is_open = bool(probe.get("is_online"))
             matching_node_endpoints = list(
                 self.db.scalars(select(NodeEndpointModel).where(NodeEndpointModel.endpoint == endpoint_row.endpoint)).all()
             )

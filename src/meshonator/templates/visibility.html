@@ -136,6 +136,12 @@
           <a class="node-link-compact" href="/nodes/{{ row.node_id }}">{{ row.short_name or row.provider_node_id }}</a>
           <span class="node-name-line">{{ row.long_name or row.provider_node_id }}</span>
           <span class="muted">{{ row.provider_node_id }}</span>
+          {% if row.favorite_peer_labels %}
+          <span class="node-name-line"><strong>Has favorites for:</strong> {{ row.favorite_peer_labels|join(', ') }}</span>
+          {% endif %}
+          {% if row.missing_favorite_peer_labels %}
+          <span class="node-name-line"><strong>Missing favorites for:</strong> {{ row.missing_favorite_peer_labels|join(', ') }}</span>
+          {% endif %}
         </div>
       </td>
       <td>{{ row.managed_peer_count }}</td>
@@ -158,6 +164,16 @@
         <details class="visibility-source-details">
           <summary>Open direct-neighbor detail</summary>
           <div class="visibility-source-detail-panel">
+          {% if row.favorite_peer_labels or row.missing_favorite_peer_labels %}
+          <div class="stack gap-sm mt-1">
+            {% if row.favorite_peer_labels %}
+            <p class="muted"><strong>Has favorites for:</strong> {{ row.favorite_peer_labels|join(', ') }}</p>
+            {% endif %}
+            {% if row.missing_favorite_peer_labels %}
+            <p class="muted"><strong>Missing favorites for:</strong> {{ row.missing_favorite_peer_labels|join(', ') }}</p>
+            {% endif %}
+          </div>
+          {% endif %}
           {% if row.managed_peers %}
           <div class="table-wrap mt-1"><table class="data-table data-table-compact">
             <tr><th>Target node</th><th>NodeDB favorite</th><th>Managed favorite</th><th>Mutual</th><th>Reachable</th><th>Last heard</th><th>SNR</th></tr>

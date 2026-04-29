@@ -1916,6 +1916,16 @@ def visibility_page(
         row["unmanaged_peer_count"] = len(row["unmanaged_peers"])
         row["mutual_peer_count"] = sum(1 for peer in row["managed_peers"] if peer.get("mutual_visibility") is True)
         row["favorite_coverage_complete"] = row["managed_peer_count"] > 0 and row["favorite_peer_count"] == row["managed_peer_count"]
+        row["favorite_peer_labels"] = [
+            peer.get("managed_short_name") or peer.get("short_name") or peer.get("provider_node_id")
+            for peer in row["managed_peers"]
+            if peer.get("is_favorite") is True
+        ]
+        row["missing_favorite_peer_labels"] = [
+            peer.get("managed_short_name") or peer.get("short_name") or peer.get("provider_node_id")
+            for peer in row["managed_peers"]
+            if peer.get("is_favorite") is not True
+        ]
 
         if source_filter == "with_gaps" and row["missing_favorite_count"] == 0:
             continue

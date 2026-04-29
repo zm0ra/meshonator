@@ -80,6 +80,10 @@ def test_visibility_page_shows_mutual_links_and_favorite_gaps(client, db):
     assert "NODEA" in body
     assert "NODEB" in body
     assert "NODEC" in body
+    assert "Has favorites for:" in body
+    assert "Missing favorites for:" in body
+    assert "Has favorites for:</strong> NODEB" in body
+    assert "Missing favorites for:</strong> NODEC" in body
     assert "All direct peers favorite" in body
     assert "1 direct peer missing favorite" in body
     assert "Mutual 0-hop pairs" in body

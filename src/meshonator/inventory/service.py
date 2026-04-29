@@ -137,10 +137,17 @@ class InventoryService:
             probe = tcp_probe(endpoint_row.host, endpoint_row.port, timeout=timeout)
             is_open = bool(probe.get("is_open"))
             endpoint_row.reachable = is_open
+            matching_node_endpoints = list(
+                self.db.scalars(select(NodeEndpointModel).where(NodeEndpointModel.endpoint == endpoint_row.endpoint)).all()
+            )
             if is_open:
                 endpoint_row.last_seen = now
+                for node_endpoint in matching_node_endpoints:
+                    node_endpoint.last_seen = now
                 endpoints_online += 1
             else:
+                for node_endpoint in matching_node_endpoints:
+                    node_endpoint.last_seen = now
                 endpoints_offline += 1
             meta_json = dict(endpoint_row.meta_json) if isinstance(endpoint_row.meta_json, dict) else {}
             meta_json.update(

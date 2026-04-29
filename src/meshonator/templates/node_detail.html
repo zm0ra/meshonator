@@ -44,7 +44,7 @@
     {% set fallback_ep = (node.endpoints | list | first) %}
     {% set endpoint = primary_ep or fallback_ep %}
     <p><b>Last heard:</b> {{ relative_timestamp(node.last_seen) }} <span class="muted">({{ exact_timestamp(node.last_seen) }})</span></p>
-    <p><b>Last checked:</b> {{ relative_timestamp(endpoint.meta_json.get('last_transport_probe_at') if endpoint and endpoint.meta_json else None) }} <span class="muted">({{ exact_timestamp(endpoint.meta_json.get('last_transport_probe_at') if endpoint and endpoint.meta_json else None) }})</span></p>
+    <p><b>Last checked:</b> {{ relative_timestamp(endpoint.last_seen if endpoint else None) }} <span class="muted">({{ exact_timestamp(endpoint.last_seen if endpoint else None) }})</span></p>
     <h3>Endpoints</h3>
     <ul class="subtle-list">
       {% for ep in node.endpoints %}<li>{{ ep.endpoint }} ({{ ep.source }})</li>{% endfor %}

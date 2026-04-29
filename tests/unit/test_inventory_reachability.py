@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
+
 from meshonator.db.models import ManagedNodeModel, NodeEndpointModel, ProviderEndpointModel
 from meshonator.inventory.service import InventoryService
 
@@ -47,12 +49,15 @@ def test_refresh_transport_reachability_updates_endpoints_and_nodes(db, monkeypa
 
     stored_endpoint = db.get(ProviderEndpointModel, endpoint.id)
     stored_node = db.get(ManagedNodeModel, node.id)
+    stored_node_endpoint = db.scalar(select(NodeEndpointModel).where(NodeEndpointModel.node_id == node.id))
     assert stored_endpoint is not None
     assert stored_node is not None
+    assert stored_node_endpoint is not None
     assert stored_endpoint.reachable is True
     assert stored_endpoint.last_seen is not None
     assert stored_endpoint.meta_json["last_transport_probe"]["is_open"] is True
     assert stored_node.reachable is True
+    assert stored_node_endpoint.last_seen is not None
     assert result["endpoints_online"] == 1
     assert result["nodes_online"] == 1
     assert result["node_changes"] == 1

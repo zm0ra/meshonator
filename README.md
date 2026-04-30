@@ -234,9 +234,9 @@ Example response includes service and provider health status.
 Default behavior:
 
 - reachability probe every 5 minutes
-- quick sync every hour
+- quick sync every 6 hours
 
-This keeps the dashboard status fresh with cheap host liveness checks, while the slower sync still refreshes actual mesh state and node details on a separate cadence.
+This keeps the dashboard status fresh with cheap host liveness checks, while the slower sync opens the Meshtastic TCP session only sporadically to refresh actual mesh state and node details.
 
 ## Build footer metadata
 
